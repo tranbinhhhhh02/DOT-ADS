@@ -2606,7 +2606,7 @@
 
         root.innerHTML = `
     <style>
-:host{all:initial;--ne:#1fff6a;--nr:31,255,106;--ac:#34d36b;--ar:52,211,107;--ink:#04230f;--fg:#f5f5f7;--gy:#8b8b93;--gy2:#C7C7CB;--bad:#f87171;--w06:rgba(255,255,255,.06);--w08:rgba(255,255,255,.08);--w12:rgba(255,255,255,.12);--t42:rgba(255,255,255,.42);--t45:rgba(255,255,255,.45);--t55:rgba(255,255,255,.55);--sheet:#1c1c1e;--grab:rgba(255,255,255,.28);--cl:rgba(255,255,255,.75);--tabbg:rgba(255,255,255,.07);--tabact:rgba(255,255,255,.14);--ph:rgba(255,255,255,.28);--stbg:rgba(var(--nr),.14);--R:44px;--r:10px;--fc:rgba(var(--ar),.7);--glow:0 0 5px 1px rgba(var(--nr),.85);--ff:'Plus Jakarta Sans',-apple-system,system-ui,'Segoe UI',Roboto,sans-serif;font-family:var(--ff);color:var(--fg)}
+:host{all:initial;--ne:#1fff6a;--nr:31,255,106;--ac:#34d36b;--ar:52,211,107;--ink:#04230f;--fg:#f5f5f7;--gy:#8b8b93;--gy2:#C7C7CB;--bad:#f87171;--w06:rgba(255,255,255,.06);--w08:rgba(255,255,255,.08);--w12:rgba(255,255,255,.12);--t42:rgba(255,255,255,.42);--t45:rgba(255,255,255,.45);--t55:rgba(255,255,255,.55);--sheet:#1c1c1e;--grab:rgba(255,255,255,.28);--cl:rgba(255,255,255,.75);--tabbg:rgba(255,255,255,.07);--tabact:rgba(255,255,255,.14);--ph:rgba(255,255,255,.28);--stbg:rgba(var(--nr),.14);--R:28px;--r:10px;--fc:rgba(var(--ar),.7);--glow:0 0 5px 1px rgba(var(--nr),.85);--ff:'Plus Jakarta Sans',-apple-system,system-ui,'Segoe UI',Roboto,sans-serif;font-family:var(--ff);color:var(--fg)}
 *,*::before,*::after{box-sizing:border-box;margin:0;letter-spacing:normal;text-transform:none;line-height:1.3;-webkit-text-size-adjust:100%}
 button{font:inherit;font-size:15px;color:inherit;border:0;background:none;padding:0;cursor:pointer;-webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;text-align:center}
 label{display:flex}
@@ -2724,37 +2724,52 @@ label{display:flex}
            - Đóng (✕ / chạm nền): thu ngược lại thành chấm nằm ĐÚNG tâm dot.
            - Vuốt xuống: panel thu nhỏ dần về phía dot theo ngón tay (cả kích thước lẫn bo góc).
              Thả ra quá ngưỡng thì co thẳng vào dot; chưa tới ngưỡng thì trở lại vị trí cũ mượt (không nảy).
-           - Mọi chuyển động chỉ dùng transform / opacity / border-radius qua Web Animations.
+           - Mọi chuyển động chỉ dùng transform / border-radius qua Web Animations.
 
            Nền panel:
            - Trạng thái thấp: kính mờ (blur) bo tròn, nằm ở lớp .g-glass.
            - Vuốt lên: lớp kính mờ tắt dần (chỉ đổi opacity) còn lớp nền đặc .g-fill hiện dần,
              nên lúc full không còn blur và việc chuyển đổi luôn mượt (không animate blur radius).
-           - Sheet không dùng will-change:opacity để không tạo "backdrop root" làm mất blur. */
+
+           QUAN TRỌNG (blur ngay từ đầu, không bị khựng):
+           - Tuyệt đối KHÔNG đặt opacity < 1 lên .g-sheet (tổ tiên của lớp kính). Một tổ tiên có opacity < 1
+             sẽ trở thành "backdrop root", khiến backdrop-filter chỉ blur nội dung bên trong sheet (tức là không
+             có gì) cho tới khi opacity về 1, rồi mới bật blur đột ngột -> cảm giác "mờ dần rồi mới blur".
+           - Vì vậy sheet luôn giữ opacity = 1. Mọi hiệu ứng mờ dần được áp lên CHÍNH các lớp nền
+             (.g-glass / .g-fill / .g-rim) và nội dung (.g-scroll); opacity đặt trên chính phần tử có
+             backdrop-filter thì vẫn blur đúng phần nền phía sau trang ngay từ khung hình đầu tiên. */
         const EASE_OPEN = 'cubic-bezier(.16,1,.3,1)', EASE_CLOSE = 'cubic-bezier(.32,.72,0,1)';
         const EASE_SHRINK = 'cubic-bezier(.5,0,.2,1)';
         const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
         const lerp = (a, b, k) => a + (b - a) * k;
-        const RAD = 44, DOTW = 6;
+        const RAD = 28, DOTW = 6;
         const reduced = () => tryQ(() => matchMedia('(prefers-reduced-motion: reduce)').matches, false);
 
         // o: { xp: có kéo giãn chiều cao, dot: thu/phóng quanh dot (ngược lại: trượt lên/xuống), bd0: độ tối nền, before: gọi trước khi đóng }
         function mkSheet(el, o) {
             const q = s => el.querySelector(s);
             const sh = q('.g-sheet'), bd = q('.g-bd'), fill = q('.g-fill'), glass = q('.g-glass'), rim = q('.g-rim'), sc = q('.g-scroll'), grab = q('.g-grab');
-            let Sx = 1, Sy = 1, O = 1, X = 0, Y = 0, B = 0, p = 0, H = 0, M = null, RR = '', CO = 1;
+            const layers = [glass, fill, rim];
+            // LF: hệ số mờ chung của các lớp nền (1 = hiện đầy đủ). Sheet luôn giữ opacity = 1.
+            let Sx = 1, Sy = 1, X = 0, Y = 0, B = 0, p = 0, H = 0, M = null, RR = '', CO = 1, LF = 1;
             let anim = null, kids = [], raf = 0, tw = false, closing = false, tr = null;
 
             // Panel kiểu "dot": thu/phóng quanh tâm của chính nó, tâm dot được tới bằng tịnh tiến (X, Y)
             if (o.dot) sh.style.transformOrigin = '50% 50%';
 
+            // Độ mờ của từng lớp nền: [kính, nền đặc, viền]. p = 0 -> kính mờ, p = 1 -> nền đặc.
+            const lay = () => {
+                const g = (o.xp ? 1 - p : 1) * LF, f = (o.xp ? p : 0) * LF;
+                return [g, f, g];
+            };
             const tf = () => `translate3d(${X}px,${Y}px,0) scale(${Sx},${Sy})`;
             const paint = () => {
                 sh.style.transform = tf();
-                sh.style.opacity = O;
                 sh.style.borderRadius = RR;
                 sc.style.opacity = CO === 1 ? '' : CO;
                 bd.style.opacity = B;
+                const l = lay();
+                layers.forEach((x, i) => { x.style.opacity = l[i]; });
             };
             const metrics = () => {
                 const h = el.clientHeight || window.innerHeight, lo = h * .54;
@@ -2766,9 +2781,6 @@ label{display:flex}
                 p = v;
                 H = M.lo + p * M.tr;
                 sh.style.height = H + 'px';
-                fill.style.opacity = p;
-                glass.style.opacity = 1 - p;
-                rim.style.opacity = 1 - p;
                 B = o.bd0 + .32 * p;
             };
             // Hình học của "giọt": hệ số thu nhỏ để panel chỉ còn bằng dot, bo góc elip để thành hình tròn,
@@ -2794,14 +2806,17 @@ label{display:flex}
             const go = (t, ms, ease, done) => {
                 stop();
                 moving(true);
-                const f = { transform: tf(), opacity: O, borderRadius: RR || RAD + 'px' }, fc = CO;
-                Sx = t.Sx; Sy = t.Sy; O = t.O; X = t.X || 0; Y = t.Y; B = t.B; RR = t.RR || ''; CO = t.CO == null ? 1 : t.CO;
+                const f = { transform: tf(), borderRadius: RR || RAD + 'px' }, fc = CO, l0 = lay();
+                Sx = t.Sx; Sy = t.Sy; X = t.X || 0; Y = t.Y; B = t.B; RR = t.RR || ''; CO = t.CO == null ? 1 : t.CO; LF = t.LF == null ? 1 : t.LF;
+                const l1 = lay();
                 bd.style.transition = `opacity ${Math.round(ms * .85)}ms ease`;
                 paint();
-                const e = { transform: tf(), opacity: O, borderRadius: RR || RAD + 'px' };
+                const e = { transform: tf(), borderRadius: RR || RAD + 'px' };
                 const a = sh.animate([f, e], { duration: ms, easing: ease, fill: 'both' });
                 anim = a;
-                kids = [sc.animate([{ opacity: fc }, { opacity: CO }], { duration: Math.min(ms, 320), easing: 'ease-out', fill: 'both' })];
+                const fd = Math.min(ms, 320);
+                kids = [sc.animate([{ opacity: fc }, { opacity: CO }], { duration: fd, easing: 'ease-out', fill: 'both' })];
+                layers.forEach((x, i) => kids.push(x.animate([{ opacity: l0[i] }, { opacity: l1[i] }], { duration: fd, easing: 'ease-out', fill: 'both' })));
                 a.onfinish = () => { if (anim !== a) return; killAnims(); moving(false); if (done) done(); };
             };
             const tween = to => {
@@ -2823,13 +2838,14 @@ label{display:flex}
                 closing = false;
                 killAnims();
                 el.classList.remove('show', 'full', 'moving');
-                Sx = 1; Sy = 1; O = 1; X = 0; Y = 0; B = 0; RR = ''; CO = 1;
+                Sx = 1; Sy = 1; X = 0; Y = 0; B = 0; RR = ''; CO = 1; LF = 1;
                 paint();
                 hideLater(el);
                 syncBusy();
             };
 
-            // Mở kiểu giọt nước: chấm nhỏ ngay tâm dot -> panel, mượt (không nảy), bo góc chuyển dần, nội dung hiện lần lượt
+            // Mở kiểu giọt nước: chấm nhỏ ngay tâm dot -> panel, mượt (không nảy), bo góc chuyển dần, nội dung hiện lần lượt.
+            // Kính mờ (backdrop-filter) có hiệu lực ngay từ khung hình đầu vì sheet không hề bị giảm opacity.
             const morphIn = () => {
                 const g = geom();
                 moving(true);
@@ -2838,8 +2854,7 @@ label{display:flex}
                     { transform: 'translate3d(0,0,0) scale(1,1)' }
                 ], { duration: 620, easing: EASE_OPEN });
                 const a2 = sh.animate([{ borderRadius: g.r }, { borderRadius: RAD + 'px' }], { duration: 520, easing: 'cubic-bezier(.3,.7,.25,1)' });
-                const a3 = sh.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
-                kids = [a2, a3];
+                kids = [a2];
                 [...sc.children].forEach((c, i) => {
                     if (c.animate) kids.push(c.animate([{ opacity: 0 }, { opacity: 1 }],
                         { duration: 260, delay: 190 + Math.min(i, 12) * 12, easing: 'ease-out', fill: 'backwards' }));
@@ -2854,8 +2869,9 @@ label{display:flex}
                 setP(0);
                 el.classList.remove('full');
                 const morph = o.dot && !reduced();
-                Sx = Sy = 1; RR = ''; CO = 1; X = 0; Y = 0; B = 0;
-                if (morph) O = 1; else { Sx = Sy = .94; Y = 44; O = 0; }
+                Sx = Sy = 1; RR = ''; CO = 1; LF = 1; X = 0; Y = 0; B = 0;
+                // Không morph: trượt lên nhẹ, nền và nội dung hiện dần (opacity áp lên từng lớp, không áp lên sheet)
+                if (!morph) { Sx = Sy = .94; Y = 44; CO = 0; LF = 0; }
                 bd.style.transition = 'none';
                 paint();
                 el.classList.add('show');
@@ -2866,7 +2882,7 @@ label{display:flex}
                     bd.style.transition = 'opacity 420ms ease';
                     bd.style.opacity = B;
                     morphIn();
-                } else go({ Sx: 1, Sy: 1, O: 1, Y: 0, B: o.bd0 }, 420, EASE_OPEN);
+                } else go({ Sx: 1, Sy: 1, Y: 0, B: o.bd0, CO: 1, LF: 1 }, 420, EASE_OPEN);
             };
             // Đóng kiểu giọt nước: thu ngược thành chấm đúng tâm dot (bắt đầu từ trạng thái hiện tại, kể cả đang vuốt dở).
             const close = () => {
@@ -2875,10 +2891,10 @@ label{display:flex}
                 if (o.before) o.before();
                 el.classList.remove('full');
                 if (!(o.dot && !reduced())) {
-                    go({ Sx: .94, Sy: .94, O: 0, Y: Y + 60, B: 0 }, 280, EASE_CLOSE, fin);
+                    go({ Sx: .94, Sy: .94, Y: Y + 60, B: 0, CO: 0, LF: 0 }, 280, EASE_CLOSE, fin);
                     return;
                 }
-                const cT = tf(), cR = RR || RAD + 'px', cO = O;
+                const cT = tf(), cR = RR || RAD + 'px', lv = lay();
                 stop();
                 const g = geom();
                 moving(true);
@@ -2888,8 +2904,10 @@ label{display:flex}
                     { duration: dur, easing: EASE_SHRINK, fill: 'forwards' });
                 const a2 = sh.animate([{ borderRadius: cR }, { borderRadius: g.r }],
                     { duration: dur, easing: EASE_SHRINK, fill: 'forwards' });
-                const a3 = sh.animate([{ opacity: cO }, { opacity: cO, offset: .65 }, { opacity: 0 }], { duration: dur, easing: 'linear', fill: 'forwards' });
-                kids = [a2, a3];
+                kids = [a2];
+                // Mờ dần ở cuối hành trình, áp lên chính các lớp nền thay vì lên sheet
+                layers.forEach((x, i) => kids.push(x.animate([{ opacity: lv[i] }, { opacity: lv[i], offset: .65 }, { opacity: 0 }],
+                    { duration: dur, easing: 'linear', fill: 'forwards' })));
                 [...sc.children].forEach(c => {
                     if (c.animate) kids.push(c.animate([{ opacity: 1 }, { opacity: 1, offset: .2 }, { opacity: 0 }],
                         { duration: 110, easing: 'ease-in', fill: 'forwards' }));
@@ -2912,11 +2930,12 @@ label{display:flex}
                         X = lerp(0, g.dx, k); Y = lerp(0, g.dy, k);
                         RR = `${lerp(RAD, g.rx, k).toFixed(1)}px / ${lerp(RAD, g.ry, k).toFixed(1)}px`;
                     } else { Sx = Sy = 1; X = 0; Y = 0; RR = ''; }
-                    O = 1 - .3 * k;
+                    LF = 1 - .3 * k;
                     CO = Math.max(0, 1 - k * 1.8);
                     B = base * (1 - k);
                 } else {
                     X = 0; Y = ex; Sx = Sy = Math.max(.85, 1 - ex / 1600);
+                    LF = 1;
                     B = base * (1 - Math.min(1, ex / 500));
                 }
             };
@@ -2955,7 +2974,7 @@ label{display:flex}
                 if (t.ex > 0 && (t.ex > 80 || vy > .6)) { close(); return; }
                 if (o.xp && t.ex === 0) { tween(p - vy * 200 / M.tr > .5 ? 1 : 0); return; }
                 // Chưa tới ngưỡng đóng: trở lại vị trí cũ mượt (không nảy)
-                go({ Sx: 1, Sy: 1, O: 1, X: 0, Y: 0, B: o.bd0 + (o.xp ? .32 * p : 0), RR: '', CO: 1 }, 460, EASE_OPEN);
+                go({ Sx: 1, Sy: 1, X: 0, Y: 0, B: o.bd0 + (o.xp ? .32 * p : 0), RR: '', CO: 1, LF: 1 }, 460, EASE_OPEN);
             };
 
             bind(sh, 'touchstart', (e, tg) => { if (e.touches.length === 1) start(e.touches[0].clientX, e.touches[0].clientY, tg); });
@@ -2991,7 +3010,7 @@ label{display:flex}
 .g-ov.show{visibility:visible}
 .g-ov::backdrop{display:none}
 .g-bd{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;will-change:opacity}
-.g-sheet{position:absolute;display:flex;flex-direction:column;left:8px;right:8px;bottom:8px;margin:0 auto;max-width:520px;max-height:80vh;max-height:80dvh;color:var(--fg);touch-action:pan-y;border-radius:var(--R);overflow:hidden;background:transparent;box-shadow:0 10px 32px rgba(0,0,0,.34);transform-origin:50% 100%;opacity:0;will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;transform:translateZ(0)}
+.g-sheet{position:absolute;display:flex;flex-direction:column;left:8px;right:8px;bottom:8px;margin:0 auto;max-width:520px;max-height:80vh;max-height:80dvh;color:var(--fg);touch-action:pan-y;border-radius:var(--R);overflow:hidden;background:transparent;box-shadow:0 10px 32px rgba(0,0,0,.34);transform-origin:50% 100%;will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;transform:translateZ(0)}
 .g-ov.xp .g-sheet{height:54%;max-height:none}
 .g-fill,.g-rim,.g-glass{position:absolute;inset:0;border-radius:inherit;pointer-events:none}
 .g-fill{background:var(--sheet);opacity:0;will-change:opacity}

@@ -12,7 +12,11 @@
 // @grant        GM.listValues
 // @grant        GM_deleteValue
 // @grant        GM.deleteValue
+// @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
 // @grant        unsafeWindow
+// @connect      fonts.googleapis.com
+// @connect      fonts.gstatic.com
 // @run-at       document-start
 // ==/UserScript==
 
@@ -227,6 +231,97 @@
         return [];
     };
     const GMOK = !!(gmGet && gmSet);
+
+    // ============ Font Plus Jakarta Sans: nạp bằng GM_xmlhttpRequest + FontFace(ArrayBuffer) ============
+    // Cách này không bị CSP của trang chặn (không dùng <link>/@font-face url), nên font hoạt động ở mọi trang web.
+    // Dữ liệu font được lưu đệm trong kho của userscript để các trang sau không phải tải lại.
+    const FONT_FAMILY = 'Plus Jakarta Sans';
+    const FONT_CSS_URL = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap';
+    const FONT_CACHE_KEY = 'fontcache:pjs2';
+    const gmXhr = (typeof GM_xmlhttpRequest === 'function') ? GM_xmlhttpRequest
+        : (hasGM && typeof GM.xmlHttpRequest === 'function' ? GM.xmlHttpRequest.bind(GM) : null);
+    const xhrGet = (url, type) => new Promise((res, rej) => {
+        if (!gmXhr) { rej(new Error('no-xhr')); return; }
+        try {
+            gmXhr({
+                method: 'GET', url, responseType: type || 'text', timeout: 20000,
+                onload: r => ((r.status >= 200 && r.status < 300) ? res(r.response) : rej(new Error('http ' + r.status))),
+                onerror: () => rej(new Error('net')),
+                ontimeout: () => rej(new Error('timeout')),
+                onabort: () => rej(new Error('abort'))
+            });
+        } catch (e) { rej(e); }
+    });
+    const b64enc = buf => {
+        const u = new Uint8Array(buf);
+        let s = '';
+        for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+        return btoa(s);
+    };
+    const b64dec = str => {
+        const s = atob(str), u = new Uint8Array(s.length);
+        for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+        return u.buffer;
+    };
+    const readFontCache = async () => {
+        if (!GMOK) return null;
+        try {
+            let v = await gmGet(FONT_CACHE_KEY, null);
+            if (typeof v === 'string') v = JSON.parse(v);
+            return (v && Array.isArray(v.f) && v.f.length) ? v.f : null;
+        } catch (e) { return null; }
+    };
+    const saveFontCache = async list => {
+        if (!GMOK) return;
+        try { await gmSet(FONT_CACHE_KEY, JSON.stringify({ t: Date.now(), f: list })); } catch (e) {}
+    };
+    const fetchFontData = async () => {
+        const css = await xhrGet(FONT_CSS_URL, 'text');
+        const blocks = String(css).match(/@font-face\s*\{[^}]*\}/g) || [];
+        const out = [];
+        for (const b of blocks) {
+            const u = /url\(\s*['"]?([^)'"]+)['"]?\s*\)/.exec(b);
+            if (!u) continue;
+            const ur = /unicode-range:\s*([^;]+);/.exec(b);
+            const w = /font-weight:\s*([^;]+);/.exec(b);
+            const buf = await xhrGet(u[1], 'arraybuffer');
+            out.push({ r: ur ? ur[1].trim() : '', w: w ? w[1].trim() : '200 800', d: b64enc(buf) });
+        }
+        return out;
+    };
+    let fontLinkEl = null;
+    const fontFallbackLink = () => {
+        try {
+            if (fontLinkEl && fontLinkEl.isConnected) return;
+            fontLinkEl = document.createElement('link');
+            fontLinkEl.rel = 'stylesheet';
+            fontLinkEl.href = FONT_CSS_URL;
+            (document.head || document.documentElement).appendChild(fontLinkEl);
+        } catch (e) {}
+    };
+    let fontStarted = false;
+    async function loadFont() {
+        if (fontStarted || IS_FRAME) return;
+        fontStarted = true;
+        try {
+            if (!document.fonts || typeof FontFace !== 'function') { fontFallbackLink(); return; }
+            let list = await readFontCache();
+            if (!list) {
+                list = await fetchFontData();
+                if (list && list.length) saveFontCache(list);
+            }
+            if (!list || !list.length) throw new Error('empty');
+            const faces = list.map(it => {
+                const d = { weight: it.w || '200 800', style: 'normal', display: 'swap' };
+                if (it.r) d.unicodeRange = it.r;
+                return new FontFace(FONT_FAMILY, b64dec(it.d), d);
+            });
+            await Promise.all(faces.map(f => f.load()));
+            faces.forEach(f => document.fonts.add(f));
+        } catch (e) {
+            fontFallbackLink();
+        }
+    }
 
     const gmGetSync = k => {
         try {
@@ -508,9 +603,6 @@
     const mkStyle = () => document.createElement('style');
     const page = mkStyle(), autoStyle = mkStyle(), ruleStyle = mkStyle();
     page.textContent = PAGE_CSS;
-    const fontLink = document.createElement('link');
-    fontLink.rel = 'stylesheet';
-    fontLink.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
 
     let adopted = null;
     try { adopted = new CSSStyleSheet(); } catch (e) {}
@@ -591,7 +683,7 @@
     const ensureStyles = () => {
         const de = document.documentElement;
         if (!de) return;
-        [page, autoStyle, ruleStyle, ...(IS_FRAME ? [] : [fontLink])].forEach(s => { if (!s.isConnected) de.appendChild(s); });
+        [page, autoStyle, ruleStyle].forEach(s => { if (!s.isConnected) de.appendChild(s); });
         attachAdopted();
         if (hostEl && !hostEl.isConnected) { de.appendChild(hostEl); promote(); }
         if (lastRules && !de.hasAttribute(LNK_ATTR)) publishRules();
@@ -2452,6 +2544,9 @@
     function initUI() {
         if (document.getElementById('gdar-host') || !document.documentElement) return;
 
+        // Nạp font Plus Jakarta Sans (không phụ thuộc CSP của trang)
+        loadFont();
+
         const TL = typeof HTMLElement !== 'undefined' && typeof HTMLElement.prototype.showPopover === 'function';
         const toTop = el => {
             if (!TL || !el || !el.isConnected) return;
@@ -2622,48 +2717,25 @@ label{display:flex}
         }
 
         /* ============ Bộ điều khiển panel (mở / kéo / đóng) ============
-           Hiệu ứng "giọt nước" (giống panel cài đặt của Media Gallery):
+           Hiệu ứng "giọt nước":
            - Mở: panel phóng ra từ chính tâm dot. Ban đầu là một chấm nhỏ (scale ≈ 6px, bo tròn
-             hoàn toàn), rồi bung ra bằng lò xo (spring) CÓ NẢY nhẹ đồng thời bo góc chuyển dần từ
+             hoàn toàn), rồi bung ra mượt (không nảy) đồng thời bo góc chuyển dần từ
              tròn về góc của panel; nội dung hiện dần theo từng dòng sau một nhịp.
            - Đóng (✕ / chạm nền): thu ngược lại thành chấm nằm ĐÚNG tâm dot.
            - Vuốt xuống: panel thu nhỏ dần về phía dot theo ngón tay (cả kích thước lẫn bo góc).
-             Thả ra quá ngưỡng thì panel "phồng" nhẹ một nhịp (bounce) rồi co hẳn vào dot;
-             chưa tới ngưỡng thì bật lại như cũ bằng lò xo có nảy.
+             Thả ra quá ngưỡng thì co thẳng vào dot; chưa tới ngưỡng thì trở lại vị trí cũ mượt (không nảy).
            - Mọi chuyển động chỉ dùng transform / opacity / border-radius qua Web Animations.
 
-           Nền panel (v2.2):
-           - Trạng thái thấp: kính mờ (blur) bo tròn như ảnh mẫu, nằm ở lớp .g-glass.
+           Nền panel:
+           - Trạng thái thấp: kính mờ (blur) bo tròn, nằm ở lớp .g-glass.
            - Vuốt lên: lớp kính mờ tắt dần (chỉ đổi opacity) còn lớp nền đặc .g-fill hiện dần,
              nên lúc full không còn blur và việc chuyển đổi luôn mượt (không animate blur radius).
            - Sheet không dùng will-change:opacity để không tạo "backdrop root" làm mất blur. */
         const EASE_OPEN = 'cubic-bezier(.16,1,.3,1)', EASE_CLOSE = 'cubic-bezier(.32,.72,0,1)';
         const EASE_SHRINK = 'cubic-bezier(.5,0,.2,1)';
-        const EASE_BOUNCE = 'cubic-bezier(.34,1.56,.64,1)';
         const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
         const lerp = (a, b, k) => a + (b - a) * k;
         const RAD = 44, DOTW = 6;
-        const springCache = {};
-        // Lò xo giảm chấn: zeta càng nhỏ càng nảy. Trả về easing dạng linear(...) (fallback: cubic-bezier có overshoot)
-        const spring = (zeta, omega, dur) => {
-            const key = zeta + '/' + omega + '/' + dur;
-            if (springCache[key]) return springCache[key];
-            let out;
-            try {
-                if (!(window.CSS && CSS.supports && CSS.supports('animation-timing-function', 'linear(0, 1)'))) throw 0;
-                const n = 72, wd = omega * Math.sqrt(1 - zeta * zeta), pts = [];
-                for (let i = 0; i <= n; i++) {
-                    const t = (i / n) * dur;
-                    const v = 1 - Math.exp(-zeta * omega * t) * (Math.cos(wd * t) + (zeta * omega / wd) * Math.sin(wd * t));
-                    pts.push((i === n ? 1 : v).toFixed(4));
-                }
-                out = 'linear(' + pts.join(',') + ')';
-            } catch (e) { out = EASE_BOUNCE; }
-            springCache[key] = out;
-            return out;
-        };
-        const springOpen = () => spring(.74, 15, .78);
-        const springBack = () => spring(.52, 17, .86);
         const reduced = () => tryQ(() => matchMedia('(prefers-reduced-motion: reduce)').matches, false);
 
         // o: { xp: có kéo giãn chiều cao, dot: thu/phóng quanh dot (ngược lại: trượt lên/xuống), bd0: độ tối nền, before: gọi trước khi đóng }
@@ -2757,14 +2829,14 @@ label{display:flex}
                 syncBusy();
             };
 
-            // Mở kiểu giọt nước: chấm nhỏ ngay tâm dot -> panel, bằng lò xo có nảy, bo góc chuyển dần, nội dung hiện lần lượt
+            // Mở kiểu giọt nước: chấm nhỏ ngay tâm dot -> panel, mượt (không nảy), bo góc chuyển dần, nội dung hiện lần lượt
             const morphIn = () => {
                 const g = geom();
                 moving(true);
                 const a1 = sh.animate([
                     { transform: dropTf(g) },
                     { transform: 'translate3d(0,0,0) scale(1,1)' }
-                ], { duration: 780, easing: springOpen() });
+                ], { duration: 620, easing: EASE_OPEN });
                 const a2 = sh.animate([{ borderRadius: g.r }, { borderRadius: RAD + 'px' }], { duration: 520, easing: 'cubic-bezier(.3,.7,.25,1)' });
                 const a3 = sh.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' });
                 kids = [a2, a3];
@@ -2797,8 +2869,7 @@ label{display:flex}
                 } else go({ Sx: 1, Sy: 1, O: 1, Y: 0, B: o.bd0 }, 420, EASE_OPEN);
             };
             // Đóng kiểu giọt nước: thu ngược thành chấm đúng tâm dot (bắt đầu từ trạng thái hiện tại, kể cả đang vuốt dở).
-            // bounce = true (vuốt đóng): panel phồng nhẹ một nhịp rồi mới co vào dot.
-            const close = bounce => {
+            const close = () => {
                 if (closing) return;
                 closing = true; tr = null;
                 if (o.before) o.before();
@@ -2808,25 +2879,20 @@ label{display:flex}
                     return;
                 }
                 const cT = tf(), cR = RR || RAD + 'px', cO = O;
-                const bump = `translate3d(${X}px,${Y}px,0) scale(${(Sx * 1.07).toFixed(4)},${(Sy * 1.07).toFixed(4)})`;
                 stop();
                 const g = geom();
                 moving(true);
                 const end = dropTf(g);
-                const dur = bounce ? 520 : 320;
-                const a1 = sh.animate(bounce
-                    ? [{ transform: cT, easing: 'cubic-bezier(.2,.8,.3,1)' }, { transform: bump, offset: .2, easing: EASE_SHRINK }, { transform: end }]
-                    : [{ transform: cT }, { transform: end }],
+                const dur = 340;
+                const a1 = sh.animate([{ transform: cT }, { transform: end }],
                     { duration: dur, easing: EASE_SHRINK, fill: 'forwards' });
-                const a2 = sh.animate(bounce
-                    ? [{ borderRadius: cR }, { borderRadius: cR, offset: .2 }, { borderRadius: g.r }]
-                    : [{ borderRadius: cR }, { borderRadius: g.r }],
+                const a2 = sh.animate([{ borderRadius: cR }, { borderRadius: g.r }],
                     { duration: dur, easing: EASE_SHRINK, fill: 'forwards' });
                 const a3 = sh.animate([{ opacity: cO }, { opacity: cO, offset: .65 }, { opacity: 0 }], { duration: dur, easing: 'linear', fill: 'forwards' });
                 kids = [a2, a3];
                 [...sc.children].forEach(c => {
                     if (c.animate) kids.push(c.animate([{ opacity: 1 }, { opacity: 1, offset: .2 }, { opacity: 0 }],
-                        { duration: bounce ? 200 : 110, easing: 'ease-in', fill: 'forwards' }));
+                        { duration: 110, easing: 'ease-in', fill: 'forwards' }));
                 });
                 bd.style.transition = `opacity ${dur - 20}ms ease`;
                 B = 0;
@@ -2886,10 +2952,10 @@ label{display:flex}
                 const t = tr; tr = null;
                 if (!t || !t.drag) return;
                 const vy = Date.now() - t.t > 90 ? 0 : t.vy;
-                if (t.ex > 0 && (t.ex > 80 || vy > .6)) { close(true); return; }
+                if (t.ex > 0 && (t.ex > 80 || vy > .6)) { close(); return; }
                 if (o.xp && t.ex === 0) { tween(p - vy * 200 / M.tr > .5 ? 1 : 0); return; }
-                // Chưa tới ngưỡng đóng: bật lại vị trí cũ bằng lò xo có nảy
-                go({ Sx: 1, Sy: 1, O: 1, X: 0, Y: 0, B: o.bd0 + (o.xp ? .32 * p : 0), RR: '', CO: 1 }, 760, springBack());
+                // Chưa tới ngưỡng đóng: trở lại vị trí cũ mượt (không nảy)
+                go({ Sx: 1, Sy: 1, O: 1, X: 0, Y: 0, B: o.bd0 + (o.xp ? .32 * p : 0), RR: '', CO: 1 }, 460, EASE_OPEN);
             };
 
             bind(sh, 'touchstart', (e, tg) => { if (e.touches.length === 1) start(e.touches[0].clientX, e.touches[0].clientY, tg); });
@@ -2945,7 +3011,7 @@ input[type=text],textarea{-webkit-user-select:text!important;user-select:text!im
 .g-sub,.g-set small,.g-hint,.g-empty{color:var(--t45)}
 .g-grab{position:absolute;top:0;left:0;right:0;z-index:2;height:34px;margin:0;display:flex;justify-content:center;align-items:flex-start;padding-top:12px;touch-action:none;cursor:grab;background:transparent;-webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0)}
 .g-grab i{display:block;width:36px;height:4px;border-radius:2px;background:var(--grab)}
-.g-close{position:absolute;top:12px;right:14px;z-index:3;width:30px;height:30px;color:var(--cl);transition:background var(--t2),transform var(--t2) cubic-bezier(.34,1.56,.64,1)}
+.g-close{position:absolute;top:12px;right:14px;z-index:3;width:30px;height:30px;color:var(--cl);transition:background var(--t2),transform var(--t2) ease}
 .g-close:active{transform:scale(.88) rotate(90deg)}
 .g-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 14px}
 .g-title{font-size:20px;font-weight:700;white-space:nowrap}
@@ -3545,7 +3611,7 @@ to{opacity:1;transform:scale(1)}}
     border-radius:999px;color:#fff;font-size:16px;font-weight:600;
     background:linear-gradient(180deg,#d8625d 0%,#c9544f 100%);
     box-shadow:inset 0 0 0 1.5px rgba(238,108,100,.9),0 0 22px rgba(226,84,78,.32),0 6px 16px rgba(0,0,0,.3);
-    transition:transform .5s cubic-bezier(.34,1.56,.64,1)}
+    transition:transform .35s cubic-bezier(.16,1,.3,1)}
 .wl-go:active{transform:scale(.97);transition-duration:.12s}
 .wl-go > svg,.wl-go > span:last-child{position:relative}
 .wl-fx{position:absolute;inset:0;border-radius:inherit;pointer-events:none}
@@ -3928,7 +3994,7 @@ to{opacity:1;transform:scale(1)}}
             };
             window.addEventListener('resize', fit);
 
-            /* Nút "Tiếp tục": nhấn -> ép dẹt + gợn sóng loang từ điểm chạm, nhả -> bật nảy nhẹ rồi ổn định.
+            /* Nút "Tiếp tục": nhấn -> ép dẹt + gợn sóng loang từ điểm chạm, nhả -> trở lại mượt (không nảy).
                Chỉ dùng transform/opacity nên mượt. */
             const SQUASH = 'scale(.94,.88)';
             let press = null;
@@ -3950,10 +4016,8 @@ to{opacity:1;transform:scale(1)}}
                 press.cancel(); press = null;
                 btn.animate([
                     { transform: SQUASH },
-                    { transform: 'scale(1.04,.97)', offset: .35 },
-                    { transform: 'scale(.99,1.015)', offset: .65 },
                     { transform: 'scale(1,1)' }
-                ], { duration: RM ? 1 : 520, easing: 'cubic-bezier(.3,.6,.4,1)' });
+                ], { duration: RM ? 1 : 220, easing: 'ease-out' });
             };
             ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => bind(btn, t, release));
 

@@ -26,12 +26,13 @@ Dot Ads là userscript chặn quảng cáo cho Safari (iOS/macOS) với giao di�
 
 ## Cài đặt
 
-Dot Ads là userscript (định dạng Tampermonkey), cần một trình quản lý userscript trên Safari.
+Dot Ads là userscript, chạy trên Safari thông qua ứng dụng **WBlock**.
 
-1. Cài một trình quản lý userscript hỗ trợ Safari (ví dụ **Userscripts**, **Stay**, **Tampermonkey**).
-2. Bật extension trong **Cài đặt → Safari → Tiện ích mở rộng**, cho phép trên **Mọi trang web**.
-3. Thêm script `dot-ads_user.js` vào trình quản lý (dán nội dung hoặc mở file raw).
-4. Mở một trang web bất kỳ, chấm Dot sẽ xuất hiện ở góc trái màn hình.
+1. Tải ứng dụng **WBlock** trên App Store và hoàn tất phần setup.
+2. Vào **Userscript → Userscript → File → Choose File**, chọn file `dot-ads_user.js` vừa tải rồi nhấn **Add**.
+3. Chuyển sang tab **Filters**, nhấn biểu tượng **Reload** để áp dụng.
+
+Mở Safari và truy cập một trang web bất kỳ để kiểm tra. Nếu thấy **dấu chấm xanh** xuất hiện thì Dot Ads đã hoạt động.
 
 Script yêu cầu quyền `GM_getValue`, `GM_setValue`, `GM_listValues`, `GM_deleteValue` (và bản `GM.*`) để lưu bộ lọc, chạy ở `document-start` trên `*://*/*`.
 
@@ -108,4 +109,4 @@ Dữ liệu được lưu qua `GM.setValue` và sao lưu vào `localStorage` c�
 
 ## Giấy phép
 
-MIT
+MIT.

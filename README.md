@@ -2,7 +2,7 @@
 
 **Chặn quảng cáo với một chạm.**
 
-Dot Ads là userscript chặn quảng cáo cho Safari (iOS/macOS) với giao diện tối giản: chỉ một chấm nhỏ nổi trên trang. Chạm để bật/tắt, nhấn giữ để mở bảng điều khiển.
+Dot Ads là userscript chặn quảng cáo cho Safari iOS với giao diện tối giản: chỉ một chấm nhỏ nổi trên trang. Chạm để bật/tắt, nhấn giữ để mở bảng điều khiển.
 
 ## Tính năng
 

@@ -41,7 +41,7 @@ Script yêu cầu quyền `GM_getValue`, `GM_setValue`, `GM_listValues`, `GM_del
 | Thao tác | Kết quả |
 |---|---|
 | Chạm chấm | Bật / tắt Dot Ads |
-| Nhấn giữ chấm (~0,4 giây) | Mở bảng điều khiển |
+| Nhấn giữ chấm (~0,3 giây) | Mở bảng điều khiển |
 | Nhấn giữ một phần tử trên trang (~0,25 giây) | Xem thông tin phần tử, chép selector, ẩn phần tử |
 | Vuốt xuống / chạm nền / ✕ | Đóng bảng |
 

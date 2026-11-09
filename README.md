@@ -105,7 +105,7 @@ Dữ liệu được lưu qua `GM.setValue` và sao lưu vào `localStorage` c�
 
 - Dot Ads chỉ ẩn/chặn ở phía trình duyệt, một số trang có thể cần thêm luật thủ công.
 - Nếu một trang bị lỗi hiển thị, chạm chấm để tắt hoặc thêm tên miền vào `allow`.
-- Mọi thứ chạy cục bộ, không gửi dữ liệu ra ngoài. Script chỉ tải font Plus Jakarta Sans từ Google Fonts cho giao diện.
+- Mọi thứ chạy cục bộ, không gửi dữ liệu ra ngoài.
 
 ## Giấy phép
 

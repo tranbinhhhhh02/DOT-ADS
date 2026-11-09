@@ -109,4 +109,4 @@ Dữ liệu được lưu qua `GM.setValue` và sao lưu vào `localStorage` c�
 
 ## Giấy phép
 
-MIT.
+MIT

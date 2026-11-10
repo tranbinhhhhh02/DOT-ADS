@@ -3243,10 +3243,9 @@ to{opacity:1;transform:scale(1)}}
                 if (scope.startsWith('f:') && !frameRules[scope.slice(2)]) scope = 'site';
                 $('g-sc-t').textContent = scope === 'all' ? 'Mọi trang' : scope === 'site' ? 'Trang này' : 'Khung ' + scope.slice(2);
                 $('g-sc-n').textContent = count(cur());
-                // Luật "trang này" áp dụng theo tên gốc nên dùng chung cho mọi đuôi tên miền (.com, .xyz, ...)
                 const siteLabel = BASE.indexOf('.') < 0 ? BASE + '.*' : BASE;
                 $('g-hint').textContent = scope === 'all' ? 'Áp dụng cho mọi trang'
-                    : scope === 'site' ? 'Áp dụng cho ' + siteLabel + ' (mọi đuôi tên miền)'
+                    : scope === 'site' ? 'Áp dụng cho ' + siteLabel + ''
                     : 'Khung nhúng ' + scope.slice(2) + ' · tải lại để áp dụng';
                 $('g-in').placeholder = PH[tab];
                 $('g-bulk').placeholder = PH_BULK[tab];

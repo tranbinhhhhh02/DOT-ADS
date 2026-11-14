@@ -97,9 +97,6 @@
         return sc;
     }
 
-    // Tên gốc của site, bỏ đuôi tên miền: chophim.com / chophim.xyz / www.chophim.net => "chophim".
-    // Dùng làm khoá lưu luật và để nhận biết "cùng một trang" khi đổi tên miền.
-    // Hàm này phải tự chứa (không phụ thuộc hàm khác) vì được chèn nguyên vào trang.
     const siteBase = h => {
         h = String(h || '').toLowerCase().replace(/\.$/, '');
         if (!h || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.charAt(0) === '[') return h;
@@ -232,9 +229,6 @@
     };
     const GMOK = !!(gmGet && gmSet);
 
-    // ============ Font Plus Jakarta Sans: nạp bằng GM_xmlhttpRequest + FontFace(ArrayBuffer) ============
-    // Cách này không bị CSP của trang chặn (không dùng <link>/@font-face url), nên font hoạt động ở mọi trang web.
-    // Dữ liệu font được lưu đệm trong kho của userscript để các trang sau không phải tải lại.
     const FONT_FAMILY = 'Plus Jakarta Sans';
     const FONT_CSS_URL = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap';
     const FONT_CACHE_KEY = 'fontcache:pjs2';
@@ -358,7 +352,6 @@
         return r;
     };
 
-    // Gộp luật src vào dst (chỉ thêm mục chưa có). Trả về số mục đã thêm.
     const mergeRules = (dst, src) => {
         const n = normRules(src);
         let added = 0;
@@ -374,7 +367,6 @@
         dst.p = dst.p.slice(-LEARN_MAX);
         return added;
     };
-    // Khoá cũ lưu theo đúng tên miền (site:chophim.com) nhưng cùng tên gốc với trang hiện tại
     const isLegacyFor = (k, prefix) => {
         if (typeof k !== 'string' || !k.startsWith(prefix) || k === prefix + BASE) return false;
         const h = k.slice(prefix.length);
@@ -408,7 +400,6 @@
         writing++;
         return p.catch(() => {}).then(() => { writing--; });
     };
-    // Luật theo TÊN GỐC (BASE) nên đổi đuôi .com -> .xyz vẫn dùng chung luật
     const siteKey = SITE_PREFIX + BASE, learnKey = 'learn:' + BASE;
     const siteWrite = () => gWrite(siteKey, site);
     const learnWrite = () => gWrite(learnKey, learn);
@@ -423,7 +414,6 @@
     let site = normRules(newer(syncSite, cache.site) || lsGet(LEGACY_SITE_KEY));
     let learn = normLearn(newer(syncLearn, cache.learn));
 
-    // Áp luật cũ (lưu theo tên miền đầy đủ) ngay lúc tải để không bị hở; việc ghi/xoá khoá cũ do migrateLegacy làm sau
     (function legacySync() {
         try {
             const ks = typeof GM_listValues === 'function' ? GM_listValues() : null;
@@ -441,7 +431,6 @@
         try { if (gmDel) await gmDel(k); else if (gmSet) await gmSet(k, JSON.stringify(k.startsWith('learn:') ? DEF_LEARN() : DEF_RULES())); } catch (e) {}
         try { localStorage.removeItem('gdar_' + k); } catch (e) {}
     };
-    // Chuyển luật đã lưu theo tên miền cũ (site:chophim.com) sang khoá theo tên gốc (site:chophim)
     async function migrateLegacy() {
         if (!GMOK) return;
         const ks = await gmList();
@@ -761,7 +750,6 @@
     };
     const purgeSel = root => { if (set.on && killSel && root) eachMatch(root, killSel, e => kill(e)); };
 
-    // Cùng tên gốc (chophim.com = chophim.xyz) cũng được coi là cùng trang
     const sameSite = h => {
         const me = location.hostname.toLowerCase();
         return h === me || h.endsWith('.' + me) || me.endsWith('.' + h) || siteBase(h) === siteBase(me);
@@ -2190,7 +2178,6 @@
         if (JSON.stringify([set, glb, site, learn]) !== before) applyRules();
         if (uiReady) render();
     };
-    // Chuyển khoá cũ (theo tên miền đầy đủ) sang khoá theo tên gốc trước, rồi mới đồng bộ
     const storeP = migrateLegacy().catch(() => {}).then(syncFromStore).catch(() => {});
 
     const MY_ID = IS_FRAME ? 'f' + Math.random().toString(36).slice(2) + Date.now().toString(36) : '';
@@ -2353,8 +2340,6 @@
         }
     }
 
-    // Đọc luật của các trang đã lưu (trừ trang hiện tại), gộp theo TÊN GỐC.
-    // only: Set tên gốc cần lọc, bỏ trống = tất cả. Khoá cũ theo tên miền đầy đủ cũng được gộp vào.
     async function storedSites(only) {
         const out = {};
         try {
@@ -2544,7 +2529,6 @@
     function initUI() {
         if (document.getElementById('gdar-host') || !document.documentElement) return;
 
-        // Nạp font Plus Jakarta Sans (không phụ thuộc CSP của trang)
         loadFont();
 
         const TL = typeof HTMLElement !== 'undefined' && typeof HTMLElement.prototype.showPopover === 'function';
@@ -2557,13 +2541,11 @@
             if (!TL) return;
             setTimeout(() => { if (!el.classList.contains('show')) tryQ(() => el.hidePopover()); }, 500);
         };
-        // Hiện một lớp phủ (dùng cho màn chào và onboarding)
         const reveal = (el, cb) => {
             toTop(el);
             void el.offsetWidth;
             requestAnimationFrame(() => { el.classList.add('show'); if (cb) cb(); });
         };
-        // Khi panel đang mở, các tác vụ nền tạm nghỉ để hoạt ảnh không bị giật
         function syncBusy() {
             uiBusy = !!((built && (ov.classList.contains('show') || ov2.classList.contains('show'))) || obEl || wlEl);
         }
@@ -2715,6 +2697,7 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
             wrap.append(input, mk('div', 'on', onTxt || 'Bật'), mk('div', 'off', offTxt || 'Tắt'), mk('span'));
             return wrap;
         }
+
         const EASE_OPEN = 'cubic-bezier(.16,1,.3,1)', EASE_CLOSE = 'cubic-bezier(.32,.72,0,1)';
         const EASE_SHRINK = 'cubic-bezier(.5,0,.2,1)';
         const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -2722,19 +2705,15 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
         const RAD = 28, DOTW = 6;
         const reduced = () => tryQ(() => matchMedia('(prefers-reduced-motion: reduce)').matches, false);
 
-        // o: { xp: có kéo giãn chiều cao, dot: thu/phóng quanh dot (ngược lại: trượt lên/xuống), bd0: độ tối nền, before: gọi trước khi đóng }
         function mkSheet(el, o) {
             const q = s => el.querySelector(s);
             const sh = q('.g-sheet'), bd = q('.g-bd'), fill = q('.g-fill'), glass = q('.g-glass'), rim = q('.g-rim'), sc = q('.g-scroll'), grab = q('.g-grab');
             const layers = [glass, fill, rim];
-            // LF: hệ số mờ chung của các lớp nền (1 = hiện đầy đủ). Sheet luôn giữ opacity = 1.
             let Sx = 1, Sy = 1, X = 0, Y = 0, B = 0, p = 0, H = 0, M = null, RR = '', CO = 1, LF = 1;
             let anim = null, kids = [], raf = 0, tw = false, closing = false, tr = null;
 
-            // Panel kiểu "dot": thu/phóng quanh tâm của chính nó, tâm dot được tới bằng tịnh tiến (X, Y)
             if (o.dot) sh.style.transformOrigin = '50% 50%';
 
-            // Độ mờ của từng lớp nền: [kính, nền đặc, viền]. p = 0 -> kính mờ, p = 1 -> nền đặc.
             const lay = () => {
                 const g = (o.xp ? 1 - p : 1) * LF, f = (o.xp ? p : 0) * LF;
                 return [g, f, g];
@@ -2752,7 +2731,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 const h = el.clientHeight || window.innerHeight, lo = h * .54;
                 return { h, lo, tr: Math.max(60, h * .46 - 43) };
             };
-            // p: 0 = thấp (54% màn hình, kính mờ), 1 = cao (gần full, nền đặc không blur)
             const setP = v => {
                 if (!o.xp) return;
                 p = v;
@@ -2760,8 +2738,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 sh.style.height = H + 'px';
                 B = o.bd0 + .32 * p;
             };
-            // Hình học của "giọt": hệ số thu nhỏ để panel chỉ còn bằng dot, bo góc elip để thành hình tròn,
-            // và độ tịnh tiến (dx, dy) đưa TÂM panel trùng với TÂM dot (đo trực tiếp từ DOM nên luôn chính xác).
             const geom = () => {
                 const w = sh.offsetWidth || 1, hh = sh.offsetHeight || H || 1;
                 const orc = el.getBoundingClientRect(), dr = dot.getBoundingClientRect();
@@ -2779,7 +2755,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
             };
             const stop = () => { killAnims(); cancelAnimationFrame(raf); tw = false; };
 
-            // Chạy tới trạng thái t. Giá trị cuối được ghi inline ngay, WAAPI chỉ lo phần nội suy.
             const go = (t, ms, ease, done) => {
                 stop();
                 moving(true);
@@ -2821,8 +2796,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 syncBusy();
             };
 
-            // Mở kiểu giọt nước: chấm nhỏ ngay tâm dot -> panel, mượt (không nảy), bo góc chuyển dần, nội dung hiện lần lượt.
-            // Kính mờ (backdrop-filter) có hiệu lực ngay từ khung hình đầu vì sheet không hề bị giảm opacity.
             const morphIn = () => {
                 const g = geom();
                 moving(true);
@@ -2847,7 +2820,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 el.classList.remove('full');
                 const morph = o.dot && !reduced();
                 Sx = Sy = 1; RR = ''; CO = 1; LF = 1; X = 0; Y = 0; B = 0;
-                // Không morph: trượt lên nhẹ, nền và nội dung hiện dần (opacity áp lên từng lớp, không áp lên sheet)
                 if (!morph) { Sx = Sy = .94; Y = 44; CO = 0; LF = 0; }
                 bd.style.transition = 'none';
                 paint();
@@ -2861,7 +2833,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                     morphIn();
                 } else go({ Sx: 1, Sy: 1, Y: 0, B: o.bd0, CO: 1, LF: 1 }, 420, EASE_OPEN);
             };
-            // Đóng kiểu giọt nước: thu ngược thành chấm đúng tâm dot (bắt đầu từ trạng thái hiện tại, kể cả đang vuốt dở).
             const close = () => {
                 if (closing) return;
                 closing = true; tr = null;
@@ -2882,7 +2853,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 const a2 = sh.animate([{ borderRadius: cR }, { borderRadius: g.r }],
                     { duration: dur, easing: EASE_SHRINK, fill: 'forwards' });
                 kids = [a2];
-                // Mờ dần ở cuối hành trình, áp lên chính các lớp nền thay vì lên sheet
                 layers.forEach((x, i) => kids.push(x.animate([{ opacity: lv[i] }, { opacity: lv[i], offset: .65 }, { opacity: 0 }],
                     { duration: dur, easing: 'linear', fill: 'forwards' })));
                 [...sc.children].forEach(c => {
@@ -2896,7 +2866,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 a1.onfinish = fin;
             };
 
-            // Vuốt xuống quá mức thấp: panel thu nhỏ dần về phía dot (kích thước + bo góc + vị trí + nội dung mờ dần)
             const pull = ex => {
                 const base = o.bd0 + (o.xp ? .32 * p : 0);
                 if (o.dot && !reduced()) {
@@ -2950,7 +2919,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 const vy = Date.now() - t.t > 90 ? 0 : t.vy;
                 if (t.ex > 0 && (t.ex > 80 || vy > .6)) { close(); return; }
                 if (o.xp && t.ex === 0) { tween(p - vy * 200 / M.tr > .5 ? 1 : 0); return; }
-                // Chưa tới ngưỡng đóng: trở lại vị trí cũ mượt (không nảy)
                 go({ Sx: 1, Sy: 1, X: 0, Y: 0, B: o.bd0 + (o.xp ? .32 * p : 0), RR: '', CO: 1, LF: 1 }, 460, EASE_OPEN);
             };
 
@@ -3279,7 +3247,6 @@ to{opacity:1;transform:scale(1)}}
                 msg(summary(r), r.added ? 'ok' : 'err');
             }
 
-            // Danh sách luật theo tên gốc (trang hiện tại + các trang khác đã lưu)
             const listSites = async () => {
                 const all = await storedSites(), out = {};
                 if (count(site)) out[BASE] = site;
@@ -3315,7 +3282,6 @@ to{opacity:1;transform:scale(1)}}
                 if (d.settings && typeof d.settings === 'object') { set = normSet(d.settings); jobs.push(gWrite('settings', set)); }
                 if (d.global) { mergeInto(glb, d.global, replace); jobs.push(gWrite('global', glb)); }
                 if (d.sites && typeof d.sites === 'object') {
-                    // Bản sao lưu cũ lưu theo tên miền đầy đủ (chophim.com); gộp về tên gốc (chophim)
                     const grouped = {};
                     Object.keys(d.sites).forEach(h => {
                         const b = siteBase(h);
@@ -3515,7 +3481,6 @@ to{opacity:1;transform:scale(1)}}
             build();
             render();
             ctl1.open();
-            // Việc nặng (đọc kho lưu, dựng lại danh sách) chờ hoạt ảnh mở xong mới chạy
             setTimeout(() => {
                 syncFromStore();
                 scanFrameRules().then(() => { if (built) renderSheet(); });
@@ -3554,6 +3519,7 @@ to{opacity:1;transform:scale(1)}}
             dot.classList.add('ob-ping');
             setTimeout(() => dot.classList.remove('ob-ping'), 3800);
         };
+
         async function startWelcome() {
             const KEY = 'welcome';
             if (!CONFIG.welcomeReplay) {
@@ -3667,15 +3633,14 @@ to{opacity:1;transform:scale(1)}}
 
             reveal(el);
         }
+
         function startOnboarding(delay) {
             if (obEl) return;
             const PINK = '#ff2d95';
             const RM = tryQ(() => matchMedia('(prefers-reduced-motion: reduce)').matches, false);
             const wait = ms => new Promise(r => setTimeout(r, ms));
-            // Chữ hiện dần: vàng -> cam -> hồng -> hồng nhạt -> màu gốc (kèm blur nhẹ)
             const STEP = 46, DUR = 700, PAGE_MS = 6200;
 
-            // Các thành phần minh hoạ dùng chung (khung 300x400, toạ độ tuyệt đối)
             const sk = (t, w) => `<i class="ob-sk" style="top:${t}px;width:${w}"></i>`;
             const card = (l, t, w, h, cls, inner) => `<div class="ob-card ${cls || ''}" style="left:${l}px;top:${t}px;width:${w}px;height:${h}px">${inner || ''}</div>`;
             const stChips = '<div class="ob-stw" style="left:30px;width:240px"><div class="ob-st on o2on"><i></i>Đang bật</div><div class="ob-st off o2off"><i></i>Đang tắt</div></div>';
@@ -3746,6 +3711,7 @@ to{opacity:1;transform:scale(1)}}
     visibility:hidden;transition:visibility 0s linear .7s;-webkit-font-smoothing:antialiased}
 .ob::backdrop{display:none}
 .ob.show{visibility:visible;transition:visibility 0s}
+
 .ob-bg{position:absolute;inset:0;overflow:hidden;background:#09070d;opacity:0;transition:opacity .7s ease;will-change:opacity}
 .ob.show .ob-bg{opacity:1}
 .ob-bg::after{content:"";position:absolute;inset:0;pointer-events:none;
@@ -3786,6 +3752,7 @@ to{opacity:1;transform:scale(1)}}
 .ob-bl{position:relative;z-index:1}
 .ob-rp{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(20,16,26,.28),rgba(20,16,26,0) 66%);transform:scale(0);opacity:0;will-change:transform,opacity}
 .ob-ft{margin-top:10px;text-align:center;font-size:10.5px;color:rgba(255,255,255,.3)}
+
 .ob-card{position:absolute;border-radius:28px;overflow:hidden;
     background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(255,255,255,.03) 62%);
     border:1px solid rgba(255,255,255,.13);
@@ -3816,6 +3783,7 @@ to{opacity:1;transform:scale(1)}}
 .ob-st.off{background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)}
 .ob-od{display:inline-block;width:.34em;height:.34em;margin:0 .08em 0 .06em;border-radius:50%;vertical-align:.1em;
     background:var(--ne);box-shadow:0 0 6px 1px rgba(var(--nr),.85)}
+
 .o1-rg{position:absolute;left:150px;top:200px;width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
     border-radius:50%;border:1px solid rgba(255,255,255,.09)}
 .o1-rg:nth-of-type(2){border-color:rgba(var(--nr),.2)}
@@ -3838,6 +3806,7 @@ to{opacity:1;transform:scale(1)}}
     58%{opacity:1;transform:translate(-50%,-50%) rotate(calc(var(--a) + 18deg)) translateX(112px) rotate(calc((var(--a) + 18deg) * -1)) scale(1)}
     82%{opacity:.8;transform:translate(-50%,-50%) rotate(calc(var(--a) + 70deg)) translateX(40px) rotate(calc((var(--a) + 70deg) * -1)) scale(.45)}
     92%,100%{opacity:0;transform:translate(-50%,-50%) rotate(calc(var(--a) + 90deg)) translateX(0px) rotate(calc((var(--a) + 90deg) * -1)) scale(0)}}
+
 .ob-okp{position:absolute;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:14px;
     font-size:11px;font-weight:600;color:var(--ne);background:rgba(var(--nr),.1);border:1px solid rgba(var(--nr),.3);
     box-shadow:0 0 18px rgba(var(--nr),.16)}
@@ -3852,6 +3821,7 @@ to{opacity:1;transform:scale(1)}}
 @keyframes obDg{0%,30%{opacity:1}34%,66%{opacity:0}70%,100%{opacity:1}}
 @keyframes obDx{0%,30%{opacity:0}34%,66%{opacity:1}70%,100%{opacity:0}}
 @keyframes obTap{0%,22%{opacity:0;transform:scale(1.8)}27%{opacity:.9;transform:scale(1)}33%{opacity:0;transform:scale(.8)}34%,62%{opacity:0;transform:scale(1.8)}66%{opacity:.9;transform:scale(1)}73%,100%{opacity:0;transform:scale(.8)}}
+
 .o3s{padding:8px 14px 14px;border-radius:26px;transform-origin:50% 100%;will-change:transform,opacity;animation:obSh 6.4s infinite}
 .ob-gr{display:block;width:30px;height:4px;margin:0 auto 10px;border-radius:2px;background:rgba(255,255,255,.26)}
 .ob-shh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:16px;font-weight:700}
@@ -3885,6 +3855,7 @@ to{opacity:1;transform:scale(1)}}
     0%,24%{opacity:0;transform:translate3d(0,150px,0) scale(.5);animation-timing-function:cubic-bezier(.16,1,.3,1)}
     34%,80%{opacity:1;transform:none}
     90%,100%{opacity:0;transform:translate3d(0,150px,0) scale(.5)}}
+
 .ob-hl{position:absolute;border:1.5px solid var(--ne);border-radius:14px;background:rgba(var(--nr),.1);
     box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 22px rgba(var(--nr),.4)}
 .ob-lb{position:absolute;padding:2px 8px;border-radius:7px 7px 0 0;font-size:9px;font-weight:700;color:var(--ink);background:var(--ne)}
@@ -3912,6 +3883,7 @@ to{opacity:1;transform:scale(1)}}
 @keyframes obP4{0%,8%{opacity:0;transform:scale(1.8)}13%{opacity:.9;transform:scale(1)}24%{opacity:.9;transform:scale(.92)}29%,100%{opacity:0;transform:scale(1.4)}}
 @keyframes obP5{0%,47%{opacity:0;transform:scale(1.8)}52%{opacity:.9;transform:scale(1)}58%,100%{opacity:0;transform:scale(.8)}}
 @keyframes obK{0%,50%{transform:none}53%{transform:scale(.93)}57%,100%{transform:none}}
+
 .ob-cd{position:absolute;left:12px;width:276px;height:96px;padding:0 14px;display:flex;align-items:center;gap:12px;border-radius:26px;overflow:hidden;
     background:linear-gradient(135deg,rgba(255,255,255,.11),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.14);
     box-shadow:0 18px 36px -10px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.18);
@@ -3980,6 +3952,7 @@ to{opacity:1;transform:scale(1)}}
                 stage.style.setProperty('--k', Math.max(.5, Math.min(r.width / 320, r.height / 420, 1.12)).toFixed(3));
             };
             window.addEventListener('resize', fit);
+
             const SQUASH = 'scale(.94,.88)';
             let press = null;
             bind(btn, 'pointerdown', e => {
@@ -4005,7 +3978,6 @@ to{opacity:1;transform:scale(1)}}
             };
             ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => bind(btn, t, release));
 
-            // Hiệu ứng chữ vàng -> hồng (có blur giảm dần). Màu cuối trả về đúng màu gốc của chữ.
             const IN_KF = end => RM ? [{ opacity: 0 }, { opacity: 1, color: end }] : [
                 { opacity: 0, filter: 'blur(8px)', color: '#ffbb33', transform: 'translate3d(0,6px,0) scale(.97)' },
                 { opacity: .9, filter: 'blur(5px)', color: '#ff7a45', transform: 'translate3d(0,3px,0) scale(.99)', offset: .2 },

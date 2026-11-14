@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.2
 // @description  Chặn quảng cáo với một chạm.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -27,7 +27,7 @@
         names: ['smartbanner', 'app-banner', 'cookie-popup', '*adsbygoogle*'],
         texts: ['Tải ứng dụng', 'Quảng cáo'],
         hosts: [],
-        links: ['tinyurl', 'bit.ly', 'cutt.ly', 'shorturl', 'bet', 'win', '88', '789', 'nhacai', 'casino', 'jackpot', 'xoso'],
+        links: ['tinyurl', 'bit.ly', 'cutt.ly', 'shorturl', 'bet', 'win', '88', '789', 'nhacai', 'casino', 'jackpot'],
         appAllow: [],
         frames: true,
         antiAdblock: true,
@@ -2731,6 +2731,10 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
            - Vuốt lên: lớp kính mờ tắt dần (chỉ đổi opacity) còn lớp nền đặc .g-fill hiện dần,
              nên lúc full không còn blur và việc chuyển đổi luôn mượt (không animate blur radius).
 
+           Lớp phủ (.g-ov / .g-bd): hoàn toàn TRONG SUỐT, không làm tối / đen nền trang phía dưới
+           và không có bóng đổ ra ngoài panel, nên khi đóng/mở không ảnh hưởng gì đến màu nền bên dưới
+           (kể cả vùng dưới thanh tab của trình duyệt).
+
            QUAN TRỌNG (blur ngay từ đầu, không bị khựng):
            - Tuyệt đối KHÔNG đặt opacity < 1 lên .g-sheet (tổ tiên của lớp kính). Một tổ tiên có opacity < 1
              sẽ trở thành "backdrop root", khiến backdrop-filter chỉ blur nội dung bên trong sheet (tức là không
@@ -3010,11 +3014,12 @@ label,.g-set,.g-sw,.g-sw input,button,input[type=checkbox]{-webkit-tap-highlight
 .g-sw input:focus,.g-sw input:focus-visible,.g-sw input:active{outline:none!important;box-shadow:none!important;background:none!important}
 .g-sw span:after,.g-ld::before,.g-tab.has .g-lb::after{content:"";position:absolute}
 .g-od,.g-state i,.g-ld i,.g-sw span,.g-sw span:after,.g-close,.g-chip button,.g-tab.has .g-lb::after{border-radius:50%}
-.g-ov{position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:visible;z-index:2147483647;background:transparent;visibility:hidden;touch-action:none}
+.g-ov{position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:visible;z-index:2147483647;background:transparent!important;visibility:hidden;touch-action:none}
 .g-ov.show{visibility:visible}
-.g-ov::backdrop{display:none}
-.g-bd{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;will-change:opacity}
-.g-sheet{position:absolute;display:flex;flex-direction:column;left:8px;right:8px;bottom:8px;margin:0 auto;max-width:520px;max-height:80vh;max-height:80dvh;color:var(--fg);touch-action:pan-y;border-radius:var(--R);overflow:hidden;background:transparent;box-shadow:0 10px 32px rgba(0,0,0,.34);transform-origin:50% 100%;will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;transform:translateZ(0)}
+.g-ov::backdrop{display:none;background:transparent!important}
+/* Lớp phủ trong suốt hoàn toàn: không làm tối nền trang phía dưới */
+.g-bd{position:absolute;inset:0;background:transparent!important;opacity:0;pointer-events:none;display:none!important}
+.g-sheet{position:absolute;display:flex;flex-direction:column;left:8px;right:8px;bottom:8px;margin:0 auto;max-width:520px;max-height:80vh;max-height:80dvh;color:var(--fg);touch-action:pan-y;border-radius:var(--R);overflow:hidden;background:transparent;box-shadow:none;transform-origin:50% 100%;will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;transform:translateZ(0)}
 .g-ov.xp .g-sheet{height:54%;max-height:none}
 .g-fill,.g-rim,.g-glass{position:absolute;inset:0;border-radius:inherit;pointer-events:none}
 .g-fill{background:var(--sheet);opacity:0;will-change:opacity}
@@ -3228,8 +3233,8 @@ to{opacity:1;transform:scale(1)}}
             kindBtns = root.querySelectorAll('[data-tab]');
             if (!GMOK) $('g-warn').style.display = 'block';
 
-            ctl1 = mkSheet(ov, { xp: true, dot: true, bd0: .2, before: () => { $('g-in').blur(); $('g-bulk').blur(); } });
-            ctl2 = mkSheet(ov2, { bd0: .1, before: () => { hl.style.display = 'none'; } });
+            ctl1 = mkSheet(ov, { xp: true, dot: true, bd0: 0, before: () => { $('g-in').blur(); $('g-bulk').blur(); } });
+            ctl2 = mkSheet(ov2, { bd0: 0, before: () => { hl.style.display = 'none'; } });
 
             const setMsg = (id, text, cls) => { const m = $(id); m.textContent = text || ''; m.className = 'g-msg' + (cls ? ' ' + cls : ''); };
             const msg = (t, c) => setMsg('g-msg', t, c);

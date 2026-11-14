@@ -2715,33 +2715,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
             wrap.append(input, mk('div', 'on', onTxt || 'Bật'), mk('div', 'off', offTxt || 'Tắt'), mk('span'));
             return wrap;
         }
-
-        /* ============ Bộ điều khiển panel (mở / kéo / đóng) ============
-           Hiệu ứng "giọt nước":
-           - Mở: panel phóng ra từ chính tâm dot. Ban đầu là một chấm nhỏ (scale ≈ 6px, bo tròn
-             hoàn toàn), rồi bung ra mượt (không nảy) đồng thời bo góc chuyển dần từ
-             tròn về góc của panel; nội dung hiện dần theo từng dòng sau một nhịp.
-           - Đóng (✕ / chạm nền): thu ngược lại thành chấm nằm ĐÚNG tâm dot.
-           - Vuốt xuống: panel thu nhỏ dần về phía dot theo ngón tay (cả kích thước lẫn bo góc).
-             Thả ra quá ngưỡng thì co thẳng vào dot; chưa tới ngưỡng thì trở lại vị trí cũ mượt (không nảy).
-           - Mọi chuyển động chỉ dùng transform / border-radius qua Web Animations.
-
-           Nền panel:
-           - Trạng thái thấp: kính mờ (blur) bo tròn, nằm ở lớp .g-glass.
-           - Vuốt lên: lớp kính mờ tắt dần (chỉ đổi opacity) còn lớp nền đặc .g-fill hiện dần,
-             nên lúc full không còn blur và việc chuyển đổi luôn mượt (không animate blur radius).
-
-           Lớp phủ (.g-ov / .g-bd): hoàn toàn TRONG SUỐT, không làm tối / đen nền trang phía dưới
-           và không có bóng đổ ra ngoài panel, nên khi đóng/mở không ảnh hưởng gì đến màu nền bên dưới
-           (kể cả vùng dưới thanh tab của trình duyệt).
-
-           QUAN TRỌNG (blur ngay từ đầu, không bị khựng):
-           - Tuyệt đối KHÔNG đặt opacity < 1 lên .g-sheet (tổ tiên của lớp kính). Một tổ tiên có opacity < 1
-             sẽ trở thành "backdrop root", khiến backdrop-filter chỉ blur nội dung bên trong sheet (tức là không
-             có gì) cho tới khi opacity về 1, rồi mới bật blur đột ngột -> cảm giác "mờ dần rồi mới blur".
-           - Vì vậy sheet luôn giữ opacity = 1. Mọi hiệu ứng mờ dần được áp lên CHÍNH các lớp nền
-             (.g-glass / .g-fill / .g-rim) và nội dung (.g-scroll); opacity đặt trên chính phần tử có
-             backdrop-filter thì vẫn blur đúng phần nền phía sau trang ngay từ khung hình đầu tiên. */
         const EASE_OPEN = 'cubic-bezier(.16,1,.3,1)', EASE_CLOSE = 'cubic-bezier(.32,.72,0,1)';
         const EASE_SHRINK = 'cubic-bezier(.5,0,.2,1)';
         const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -3016,7 +2989,6 @@ label,.g-set,.g-sw,.g-sw input,button,input[type=checkbox]{-webkit-tap-highlight
 .g-ov{position:fixed;inset:0;width:auto;height:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:visible;z-index:2147483647;background:transparent!important;visibility:hidden;touch-action:none}
 .g-ov.show{visibility:visible}
 .g-ov::backdrop{display:none;background:transparent!important}
-/* Lớp phủ trong suốt hoàn toàn: không làm tối nền trang phía dưới */
 .g-bd{position:absolute;inset:0;background:transparent!important;opacity:0;pointer-events:none;display:none!important}
 .g-sheet{position:absolute;display:flex;flex-direction:column;left:8px;right:8px;bottom:8px;margin:0 auto;max-width:520px;max-height:80vh;max-height:80dvh;color:var(--fg);touch-action:pan-y;border-radius:var(--R);overflow:hidden;background:transparent;box-shadow:none;transform-origin:50% 100%;will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;transform:translateZ(0)}
 .g-ov.xp .g-sheet{height:54%;max-height:none}
@@ -3582,8 +3554,6 @@ to{opacity:1;transform:scale(1)}}
             dot.classList.add('ob-ping');
             setTimeout(() => dot.classList.remove('ob-ping'), 3800);
         };
-
-        /* ============ Sheet chào người mới ============ */
         async function startWelcome() {
             const KEY = 'welcome';
             if (!CONFIG.welcomeReplay) {
@@ -3697,8 +3667,6 @@ to{opacity:1;transform:scale(1)}}
 
             reveal(el);
         }
-
-        /* ============ Onboarding ============ */
         function startOnboarding(delay) {
             if (obEl) return;
             const PINK = '#ff2d95';
@@ -3778,8 +3746,6 @@ to{opacity:1;transform:scale(1)}}
     visibility:hidden;transition:visibility 0s linear .7s;-webkit-font-smoothing:antialiased}
 .ob::backdrop{display:none}
 .ob.show{visibility:visible;transition:visibility 0s}
-
-/* Nền đặc 100% + đốm màu accent chuyển động */
 .ob-bg{position:absolute;inset:0;overflow:hidden;background:#09070d;opacity:0;transition:opacity .7s ease;will-change:opacity}
 .ob.show .ob-bg{opacity:1}
 .ob-bg::after{content:"";position:absolute;inset:0;pointer-events:none;
@@ -3820,8 +3786,6 @@ to{opacity:1;transform:scale(1)}}
 .ob-bl{position:relative;z-index:1}
 .ob-rp{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(20,16,26,.28),rgba(20,16,26,0) 66%);transform:scale(0);opacity:0;will-change:transform,opacity}
 .ob-ft{margin-top:10px;text-align:center;font-size:10.5px;color:rgba(255,255,255,.3)}
-
-/* Thành phần minh hoạ: kính mờ, viền tóc, tối giản */
 .ob-card{position:absolute;border-radius:28px;overflow:hidden;
     background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(255,255,255,.03) 62%);
     border:1px solid rgba(255,255,255,.13);
@@ -3852,8 +3816,6 @@ to{opacity:1;transform:scale(1)}}
 .ob-st.off{background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)}
 .ob-od{display:inline-block;width:.34em;height:.34em;margin:0 .08em 0 .06em;border-radius:50%;vertical-align:.1em;
     background:var(--ne);box-shadow:0 0 6px 1px rgba(var(--nr),.85)}
-
-/* Trang 1: vòng quỹ đạo, quảng cáo bị hút vào dấu chấm */
 .o1-rg{position:absolute;left:150px;top:200px;width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
     border-radius:50%;border:1px solid rgba(255,255,255,.09)}
 .o1-rg:nth-of-type(2){border-color:rgba(var(--nr),.2)}
@@ -3876,8 +3838,6 @@ to{opacity:1;transform:scale(1)}}
     58%{opacity:1;transform:translate(-50%,-50%) rotate(calc(var(--a) + 18deg)) translateX(112px) rotate(calc((var(--a) + 18deg) * -1)) scale(1)}
     82%{opacity:.8;transform:translate(-50%,-50%) rotate(calc(var(--a) + 70deg)) translateX(40px) rotate(calc((var(--a) + 70deg) * -1)) scale(.45)}
     92%,100%{opacity:0;transform:translate(-50%,-50%) rotate(calc(var(--a) + 90deg)) translateX(0px) rotate(calc((var(--a) + 90deg) * -1)) scale(0)}}
-
-/* Trang 2: bật / tắt bằng một chạm */
 .ob-okp{position:absolute;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:14px;
     font-size:11px;font-weight:600;color:var(--ne);background:rgba(var(--nr),.1);border:1px solid rgba(var(--nr),.3);
     box-shadow:0 0 18px rgba(var(--nr),.16)}
@@ -3892,8 +3852,6 @@ to{opacity:1;transform:scale(1)}}
 @keyframes obDg{0%,30%{opacity:1}34%,66%{opacity:0}70%,100%{opacity:1}}
 @keyframes obDx{0%,30%{opacity:0}34%,66%{opacity:1}70%,100%{opacity:0}}
 @keyframes obTap{0%,22%{opacity:0;transform:scale(1.8)}27%{opacity:.9;transform:scale(1)}33%{opacity:0;transform:scale(.8)}34%,62%{opacity:0;transform:scale(1.8)}66%{opacity:.9;transform:scale(1)}73%,100%{opacity:0;transform:scale(.8)}}
-
-/* Trang 3: giữ chấm, vòng tiến trình, bảng điều khiển */
 .o3s{padding:8px 14px 14px;border-radius:26px;transform-origin:50% 100%;will-change:transform,opacity;animation:obSh 6.4s infinite}
 .ob-gr{display:block;width:30px;height:4px;margin:0 auto 10px;border-radius:2px;background:rgba(255,255,255,.26)}
 .ob-shh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:16px;font-weight:700}
@@ -3927,8 +3885,6 @@ to{opacity:1;transform:scale(1)}}
     0%,24%{opacity:0;transform:translate3d(0,150px,0) scale(.5);animation-timing-function:cubic-bezier(.16,1,.3,1)}
     34%,80%{opacity:1;transform:none}
     90%,100%{opacity:0;transform:translate3d(0,150px,0) scale(.5)}}
-
-/* Trang 4: chọn phần tử rồi ẩn */
 .ob-hl{position:absolute;border:1.5px solid var(--ne);border-radius:14px;background:rgba(var(--nr),.1);
     box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 22px rgba(var(--nr),.4)}
 .ob-lb{position:absolute;padding:2px 8px;border-radius:7px 7px 0 0;font-size:9px;font-weight:700;color:var(--ink);background:var(--ne)}
@@ -3956,8 +3912,6 @@ to{opacity:1;transform:scale(1)}}
 @keyframes obP4{0%,8%{opacity:0;transform:scale(1.8)}13%{opacity:.9;transform:scale(1)}24%{opacity:.9;transform:scale(.92)}29%,100%{opacity:0;transform:scale(1.4)}}
 @keyframes obP5{0%,47%{opacity:0;transform:scale(1.8)}52%{opacity:.9;transform:scale(1)}58%,100%{opacity:0;transform:scale(.8)}}
 @keyframes obK{0%,50%{transform:none}53%{transform:scale(.93)}57%,100%{transform:none}}
-
-/* Trang 5: càng dùng càng sạch */
 .ob-cd{position:absolute;left:12px;width:276px;height:96px;padding:0 14px;display:flex;align-items:center;gap:12px;border-radius:26px;overflow:hidden;
     background:linear-gradient(135deg,rgba(255,255,255,.11),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.14);
     box-shadow:0 18px 36px -10px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.18);
@@ -4026,9 +3980,6 @@ to{opacity:1;transform:scale(1)}}
                 stage.style.setProperty('--k', Math.max(.5, Math.min(r.width / 320, r.height / 420, 1.12)).toFixed(3));
             };
             window.addEventListener('resize', fit);
-
-            /* Nút "Tiếp tục": nhấn -> ép dẹt + gợn sóng loang từ điểm chạm, nhả -> trở lại mượt (không nảy).
-               Chỉ dùng transform/opacity nên mượt. */
             const SQUASH = 'scale(.94,.88)';
             let press = null;
             bind(btn, 'pointerdown', e => {

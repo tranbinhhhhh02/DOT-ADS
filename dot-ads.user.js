@@ -3008,7 +3008,6 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
             tpl.innerHTML = `
     <style>
 :host{--ez:cubic-bezier(.16,1,.3,1);--t2:.2s;--t3:.3s;--ctl:inline-flex;--ctr:center}
-/* Xoá lớp nền đen nháy khi chạm/bật tắt công tắc: tắt tap-highlight, outline và focus ring trên mọi phần tử trong panel */
 *,*::before,*::after{-webkit-tap-highlight-color:transparent!important}
 label,.g-set,.g-sw,.g-sw input,button,input[type=checkbox]{-webkit-tap-highlight-color:transparent!important;outline:none!important;-webkit-focus-ring-color:transparent!important}
 .g-sw input:focus,.g-sw input:focus-visible,.g-sw input:active{outline:none!important;box-shadow:none!important;background:none!important}

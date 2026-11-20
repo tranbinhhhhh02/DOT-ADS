@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.3
 // @description  Chặn quảng cáo với một chạm.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -3716,7 +3716,7 @@ to{opacity:1;transform:scale(1)}}
     transition:width .5s cubic-bezier(.3,.9,.3,1),background .4s ease}
 .ob-dots i.a{width:28px;background:rgba(255,255,255,.2)}
 .ob-dots b{position:absolute;inset:0;border-radius:3px;background:#fff;transform:scaleX(0);transform-origin:0 50%}
-.ob-btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;height:48px;margin:0 20px;
+.ob-btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;margin:0 auto;width:calc(100% - 70%);height:48px;margin:0 20px;
     border-radius:999px;font-size:16px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.3);background:rgba(255,255,255,.07);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);will-change:transform;
     pointer-events:none;transition:background .5s ease,color .5s ease,box-shadow .5s ease}

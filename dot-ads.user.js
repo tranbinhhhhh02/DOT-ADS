@@ -23,7 +23,7 @@
 (async function () {
     'use strict';
     const CONFIG = {
-        allow: ['microsoft.com', 'windows.com', 'windowsupdate.com', 'wikipedia.org','facebook.com','messenger.com','instagram.com','youtube.com],
+        allow: ['microsoft.com', 'windows.com', 'windowsupdate.com', 'wikipedia.org','facebook.com','messenger.com','instagram.com','youtube.com'],
         names: ['smartbanner', 'app-banner', 'cookie-popup', '*adsbygoogle*'],
         texts: ['Tải ứng dụng', 'Quảng cáo'],
         hosts: [],

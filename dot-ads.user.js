@@ -2684,7 +2684,7 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
         const ROWS_A = [
             ['g-on', 'on', 'Chặn quảng cáo', 'Xoá quảng cáo, tắt tiếng, chặn link ẩn'],
             ['g-auto', 'auto', 'Tự động chặn', 'Ẩn ads, popup, banner, float'],
-            ['g-pop', 'pop', 'Popup, tab lạ &amp; khung chứa', 'Chặn lớp phủ, tab tự mở, ẩn cả khung &amp; nút ✕'],
+            ['g-pop', 'pop', 'Popup, tab lạ &amp; khung chứa', 'Chặn lớp phủ, tab tự mở, ẩn cả khung &amp; viền nút'],
             ['g-links', 'links', 'Chặn chuyển hướng ngoài', '', 'g-lnk-s']
         ];
         const ROW_PICK = ['g-pick', 'pick', 'Nhấn giữ xem phần tử',

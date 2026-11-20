@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  Chặn quảng cáo với một chạm.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -164,11 +164,11 @@
     const APP_ALLOW = (CONFIG.appAllow || []).map(x => String(x).toLowerCase().replace(/:.*$/, '')).filter(Boolean);
     const LEGACY_SITE_KEY = 'gdar_rules', CACHE_KEY = 'gdar_cache', HOST = location.hostname, SITE_PREFIX = 'site:';
     const BASE = siteBase(HOST);
-    const HOLD_MS = 400, TOGGLE_DELAY = 1500, RED_MS = 150, PICK_MS = 250, MOVE_TOL = 10;
+    const HOLD_MS = 400, TOGGLE_DELAY = 0, RED_MS = 150, PICK_MS = 250, MOVE_TOL = 10;
     const ATTR = 'data-gdar', INV_ATTR = 'data-gdar-inv', PICK_ATTR = 'data-gdar-pick', PRESS_ATTR = 'data-gdar-press';
     const LNK_ATTR = 'data-gdar-lk', TOUCH_ATTR = 'data-gdar-t', LNK_HREF = 'data-gdar-href', GUARD_ATTR = 'data-gdar-g';
     const Q_ATTR = 'data-gdar-q', MARK = 'data-gdar-m', OK_ATTR = 'data-gdar-ok', PA_ATTR = 'data-gdar-pa', PICKED_ATTR = 'data-gdar-picked';
-    const DECIDE_MS = 700, GUARD_MS = 20000, WATCH_MS = 3000, INV_SCAN_MS = 200, MEDIA_SWEEP_MS = 250, LEARN_MAX = 40;
+    const DECIDE_MS = 450, GUARD_MS = 20000, WATCH_MS = 3000, INV_SCAN_MS = 100, MEDIA_SWEEP_MS = 100, LEARN_MAX = 40;
     const AUTO_WORDS = ['ad', 'ads', 'adv', 'popup', 'banner', 'app-download', 'float-ad', 'float-ads', 'floating-ad', 'float-banner', 'floating-banner'];
     const NAME_RE = /^\*?[\w-]+\*?$/;
     const INV_SEL = 'a[href],area[href],iframe';
@@ -1026,7 +1026,7 @@
             return !!(r && r.on) && Date.now() - (+(e && e.getAttribute('data-gdar-t')) || 0) < (ms || 3000);
         };
 
-        let gT = 0, gOK = false, gHref = '', gDepth = 0, popSig = 0, gIsoT = 0, tapN = 0, hijT = 0;
+        let gT = 0, gOK = false, gHref = '', gDepth = 0, popSig = 0, gIsoT = 0, tapN = 0, hijT = 0, extT = 0;
         ['pointerdown', 'touchstart', 'mousedown', 'click', 'keydown'].forEach(t => W.addEventListener(t, e => {
             if (!e.isTrusted) return;
             const el = e.target;
@@ -1038,6 +1038,10 @@
             const a = el && el.closest && el.closest('a[href]');
             const rh = a ? (a.getAttribute('href') || '') : '';
             gHref = (a && rh && !/^(#|javascript:)/i.test(rh)) ? a.href : '';
+            if (gHref) {
+                const gp = parse(gHref);
+                if (gp && !same(gp.hostname.toLowerCase())) extT = now;
+            }
             if (gHref && !gIsoT) gIsoT = gT;
         }, { capture: true, passive: true }));
         const popOK = () => Date.now() - gT < 1500 && gOK;
@@ -1430,7 +1434,9 @@
                 if (!r || !r.on) return;
                 if (appBad(e.destination.url)) { popSig = Date.now(); e.preventDefault(); return; }
                 const o = parse(e.destination.url);
-                if (!o || o.origin === W.location.origin) return;
+                if (!o) return;
+                if (!same(o.hostname.toLowerCase())) extT = Date.now();
+                if (o.origin === W.location.origin) return;
                 if (e.userInitiated && badNav(e.destination.url)) { popSig = Date.now(); e.preventDefault(); return; }
                 if (e.userInitiated) {
                     const nt = e.navigationType;
@@ -1452,7 +1458,7 @@
         W.addEventListener('beforeunload', e => {
             const r = rules();
             if (!r || !r.on) return;
-            if (locked()) { try { e.preventDefault(); e.returnValue = ''; } catch (x) {} }
+            if (locked() && Date.now() - extT < 2500) { try { e.preventDefault(); e.returnValue = ''; } catch (x) {} }
             const hij = !!hijT && Date.now() - hijT < 1500 && !gHref;
             if (!W.navigation && r.pop && (Date.now() - popSig < 1200 || gDepth > 0 || hij)) {
                 popSig = Date.now();
@@ -1646,7 +1652,7 @@
         restoreAdPlayers();
     }
     if (PLAYER_ADS) {
-        every(250, playerAdTick);
+        every(100, playerAdTick);
         ['loadedmetadata', 'durationchange', 'playing', 'play'].forEach(t =>
             window.addEventListener(t, e => {
                 if (!set.on) return;
@@ -1924,7 +1930,7 @@
     };
     function scanGuard() {
         if (!set.on || !set.pop || !guardOn() || !document.documentElement) return;
-        budget = 200;
+        budget = 400;
         purgePop(document.documentElement);
         document.querySelectorAll(SUSPECT).forEach(el => { if (!inHostNode(el)) vetSoon(el); });
         if (document.body) [...document.body.children].forEach(vetSoon);
@@ -2093,7 +2099,7 @@
     const mo = new MutationObserver(muts => {
         ensureStyles();
         if (!set.on) return;
-        budget = 150;
+        budget = 400;
         for (const m of muts) {
             if (m.type === 'childList') {
                 m.addedNodes.forEach(n => {
@@ -2139,10 +2145,10 @@
     window.addEventListener('load', guardKick, true);
     document.addEventListener('readystatechange', guardKick);
     every(INV_SCAN_MS, invScan);
-    every(700, () => { ensureStyles(); attachMo(); });
-    every(800, () => wallScan(null));
+    every(500, () => { ensureStyles(); attachMo(); });
+    every(500, () => wallScan(null));
     document.addEventListener('DOMContentLoaded', () => { ensureStyles(); sweep(); invScan(); scanGuard(); }, { once: true });
-    window.addEventListener('load', () => { sweep(); setTimeout(sweep, 1000); setTimeout(sweep, 3000); }, { once: true });
+    window.addEventListener('load', () => { sweep(); setTimeout(sweep, 500); setTimeout(sweep, 2000); }, { once: true });
     window.addEventListener('pageshow', e => { if (e.persisted) { ensureStyles(); sweep(); } });
 
     const syncFromStore = async () => {
@@ -2799,42 +2805,21 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 syncBusy();
             };
 
-            const morphIn = () => {
-                const g = geom();
-                moving(true);
-                const a1 = sh.animate([
-                    { transform: dropTf(g) },
-                    { transform: 'translate3d(0,0,0) scale(1,1)' }
-                ], { duration: 620, easing: EASE_OPEN });
-                const a2 = sh.animate([{ borderRadius: g.r }, { borderRadius: RAD + 'px' }], { duration: 520, easing: 'cubic-bezier(.3,.7,.25,1)' });
-                kids = [a2];
-                [...sc.children].forEach((c, i) => {
-                    if (c.animate) kids.push(c.animate([{ opacity: 0 }, { opacity: 1 }],
-                        { duration: 260, delay: 190 + Math.min(i, 12) * 12, easing: 'ease-out', fill: 'backwards' }));
-                });
-                anim = a1;
-                a1.onfinish = () => { if (anim !== a1) return; killAnims(); moving(false); };
-            };
             const open = () => {
                 stop(); closing = false; tr = null;
                 toTop(el);
                 M = metrics();
                 setP(0);
                 el.classList.remove('full');
-                const morph = o.dot && !reduced();
-                Sx = Sy = 1; RR = ''; CO = 1; LF = 1; X = 0; Y = 0; B = 0;
-                if (!morph) { Sx = Sy = .94; Y = 44; CO = 0; LF = 0; }
+                Sx = Sy = 1; RR = ''; CO = 1; LF = 1; X = 0;
+                Y = (o.xp ? M.lo : (sh.offsetHeight || 360)) + 32;
+                B = 0;
                 bd.style.transition = 'none';
                 paint();
                 el.classList.add('show');
                 syncBusy();
                 void sh.offsetWidth;
-                if (morph) {
-                    B = o.bd0;
-                    bd.style.transition = 'opacity 420ms ease';
-                    bd.style.opacity = B;
-                    morphIn();
-                } else go({ Sx: 1, Sy: 1, Y: 0, B: o.bd0, CO: 1, LF: 1 }, 420, EASE_OPEN);
+                go({ Sx: 1, Sy: 1, Y: 0, B: o.bd0, CO: 1, LF: 1 }, 460, EASE_OPEN);
             };
             const close = () => {
                 if (closing) return;
@@ -3505,7 +3490,7 @@ to{opacity:1;transform:scale(1)}}
             cancel();
             if (was && !opened) {
                 set.on = !set.on;
-                if (!set.on) { shieldUntil = Date.now() + TOGGLE_DELAY; setTimeout(calcKeys, TOGGLE_DELAY + 60); }
+                if (!set.on) { shieldUntil = Date.now() + TOGGLE_DELAY; }
                 gWrite('settings', set);
                 render();
                 applyRules();
@@ -3641,158 +3626,55 @@ to{opacity:1;transform:scale(1)}}
             const wait = ms => new Promise(r => setTimeout(r, ms));
             const STEP = 46, DUR = 700, PAGE_MS = 8000;
 
-            /* ---------- Minh hoạ mới: mô phỏng điện thoại + trang web giả ---------- */
-            const V = 'opacity:1;transform:none', X = tf => 'opacity:0;transform:' + tf;
-            const KF = (n, st) => `@keyframes ${n}{${st.map(s => s[0] + '%{' + s[1] + '}').join('')}}`;
-            const gone = (n, v1, v2, r1, r2, tf) => KF(n, [[0, V], [v1, V], [v2, X(tf)], [r1, X(tf)], [r2, V], [100, V]]);
-            const show = (n, a1, a2, b1, b2, tf) => KF(n, [[0, X(tf)], [a1, X(tf)], [a2, V], [b1, V], [b2, X(tf)], [100, X(tf)]]);
-            const op = (n, pts) => KF(n, pts.map(p => [p[0], 'opacity:' + p[1]]));
-            const TH = 'opacity:0;transform:scale(1.8)';
-            const tapKF = (n, list) => KF(n, [[0, TH]].concat(...list.map(t => [
-                [t[0], TH], [t[1], 'opacity:.9;transform:scale(1)'], [t[2], 'opacity:0;transform:scale(.7)']
-            ]), [[100, TH]]));
-            const WA = 'opacity:0;transform:scale(.05)', WB = 'opacity:0;transform:scale(7)';
-
-            const swK = [], swN = [];
-            const swT = [52, 58, 64, 70];
-            swT.forEach((t, i) => {
-                swK.push(KF('s3k' + i, [[0, 'background:#4a4954'], [t, 'background:#4a4954'], [t + 3, 'background:var(--ne)'], [100, 'background:var(--ne)']]));
-                swK.push(KF('s3n' + i, [[0, 'transform:translateX(0)'], [t, 'transform:translateX(0)'], [t + 3, 'transform:translateX(11px)'], [100, 'transform:translateX(11px)']]));
-                swN.push('s3k' + i, 's3n' + i);
-            });
-
-            const SCENE_KF = [
-                // 1: quét sạch
-                gone('s1d', 24, 30, 92, 98, 'translateY(30px)'),
-                gone('s1c', 29, 35, 92, 98, 'scale(.6)'),
-                gone('s1a', 31, 37, 92, 98, 'scale(.92)'),
-                gone('s1p', 35, 42, 92, 98, 'scale(.8)'),
-                gone('s1m', 35, 42, 92, 98, 'none'),
-                show('s1b', 46, 52, 86, 92, 'translateY(8px) scale(.9)'),
-                show('s1k', 48, 54, 84, 90, 'none'),
-                KF('s1w', [[0, WA], [18, WA], [20, 'opacity:.9;transform:scale(.05)'], [46, WB], [100, WB]]),
-                // 2: chạm bật/tắt
-                op('s2g', [[0, 1], [19, 1], [21, 0], [50, 0], [52, 1], [100, 1]]),
-                op('s2x', [[0, 0], [19, 0], [21, 1], [50, 1], [52, 0], [100, 0]]),
-                show('s2a', 21, 27, 52, 58, 'translateY(-6px) scale(.94)'),
-                show('s2f', 23, 29, 53, 59, 'scale(.6)'),
-                tapKF('s2t', [[15, 18, 22], [46, 49, 53]]),
-                show('s2n1', 14, 18, 32, 36, 'translateY(6px)'),
-                show('s2n2', 44, 48, 64, 68, 'translateY(6px)'),
-                // 3: giữ chấm mở bảng
-                op('s3g', [[0, 1], [9, 1], [11, 0], [88, 0], [92, 1], [100, 1]]),
-                KF('s3r', [[0, 'opacity:0;transform:scale(1)'], [10, 'opacity:0;transform:scale(1)'], [13, 'opacity:1;transform:scale(1.7)'], [32, 'opacity:1;transform:scale(1.7)'], [34, 'opacity:0;transform:scale(2.4)'], [100, 'opacity:0;transform:scale(1)']]),
-                op('s3rg', [[0, 0], [7, 0], [9, 1], [31, 1], [34, 0], [100, 0]]),
-                KF('s3f', [[0, 'stroke-dashoffset:138.2;stroke:var(--ne)'], [8, 'stroke-dashoffset:138.2;stroke:var(--ne)'], [28, 'stroke-dashoffset:0;stroke:#ff404d'], [100, 'stroke-dashoffset:0;stroke:#ff404d']]),
-                KF('s3t', [[0, TH], [7, TH], [10, 'opacity:.9;transform:scale(1)'], [31, 'opacity:.9;transform:scale(.92)'], [35, 'opacity:0;transform:scale(1.4)'], [100, TH]]),
-                show('s3l', 8, 11, 30, 34, 'translateY(6px)'),
-                show('s3d', 34, 40, 84, 90, 'none'),
-                KF('s3s', [[0, WA], [34, WA], [36, 'opacity:1;transform:scale(.06)'], [44, 'opacity:1;transform:scale(1.02)'], [47, 'opacity:1;transform:scale(1)'], [84, 'opacity:1;transform:scale(1)'], [90, WA], [100, WA]]),
-                ...swK,
-                // 4: nhấn giữ phần tử
-                gone('s4a', 64, 70, 94, 99, 'scale(.9)'),
-                show('s4h', 24, 28, 60, 64, 'none'),
-                KF('s4t1', [[0, TH], [8, TH], [11, 'opacity:.9;transform:scale(1)'], [22, 'opacity:.9;transform:scale(.92)'], [26, 'opacity:0;transform:scale(1.4)'], [100, TH]]),
-                op('s4rg', [[0, 0], [8, 0], [10, 1], [22, 1], [24, 0], [100, 0]]),
-                KF('s4f', [[0, 'stroke-dashoffset:138.2'], [10, 'stroke-dashoffset:138.2'], [22, 'stroke-dashoffset:0'], [100, 'stroke-dashoffset:0']]),
-                show('s4c', 8, 11, 22, 26, 'translateY(6px)'),
-                KF('s4s', [[0, X('translateY(40px) scale(.96)')], [26, X('translateY(40px) scale(.96)')], [34, V], [58, V], [66, X('translateY(40px) scale(.96)')], [100, X('translateY(40px) scale(.96)')]]),
-                tapKF('s4t2', [[50, 54, 59]]),
-                KF('s4k', [[0, 'transform:none'], [53, 'transform:none'], [55, 'transform:scale(.92)'], [58, 'transform:none'], [100, 'transform:none']]),
-                show('s4b', 70, 74, 90, 94, 'translateY(8px)'),
-                // 5: ghi nhớ
-                KF('s5a', [[0, X('translateY(-10px) scale(.9)')], [6, X('translateY(-10px) scale(.9)')], [11, V], [16, V], [21, 'opacity:0;transform:scale(.8)'], [100, 'opacity:0;transform:scale(.8)']]),
-                show('s5k', 20, 24, 40, 44, 'translateY(6px) scale(.92)'),
-                show('s5m', 28, 32, 40, 44, 'translateY(6px) scale(.92)'),
-                op('s5c1', [[0, 1], [44, 1], [46, 0], [100, 0]]),
-                op('s5c2', [[0, 0], [46, 0], [48, 1], [96, 1], [98, 0], [100, 0]]),
-                op('s5r', [[0, 0], [44, 0], [47, 1], [56, 1], [59, 0], [100, 0]]),
-                KF('s5p', [[0, 'opacity:0;transform:scaleX(0)'], [44, 'opacity:0;transform:scaleX(0)'], [46, 'opacity:1;transform:scaleX(0)'], [56, 'opacity:1;transform:scaleX(1)'], [59, 'opacity:0;transform:scaleX(1)'], [100, 'opacity:0;transform:scaleX(0)']]),
-                show('s5g', 60, 66, 94, 98, 'scale(.96)')
-            ].join('');
-            const ANI_NAMES = ('s1d s1c s1a s1p s1m s1b s1k s1w s2g s2x s2a s2f s2t s2n1 s2n2 s3g s3r s3rg s3f s3t s3l s3d s3s ' +
-                'a4 s4a s4h s4t1 s4rg s4f s4c s4s s4t2 s4k s4b s5a s5k s5m s5c1 s5c2 s5r s5p s5g').split(' ').filter(n => n !== 'a4').concat(swN);
-            const ANI_CSS = ANI_NAMES.map(n => `.${n}{animation:${n} ${PAGE_MS / 1000}s ease-in-out infinite}`).join('') +
-                '.s3s{animation-timing-function:cubic-bezier(.22,1,.36,1)}.s1w{animation-timing-function:cubic-bezier(.3,.6,.4,1)}.s3f,.s4f{animation-timing-function:linear}';
-
-            const STAR = '<path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z"/>';
-            const ph = inner => '<div class="ph"><i class="ph-nt"></i><div class="ph-sc">' + inner + '</div></div>';
-            const L = (t, w) => `<i class="pg-l" style="top:${t}px;width:${w}px"></i>`;
-            const BASE_PG = '<i class="pg-av"></i><i class="pg-lg"></i><div class="pg-hero"></div>' +
-                [[134, 150], [148, 108], [170, 128], [184, 158], [198, 96], [222, 170], [236, 146], [250, 160], [264, 118], [278, 152], [292, 104]]
-                    .map(a => L(a[0], a[1])).join('');
-            const dotW = (cls, kind) => `<i class="pg-dw ${cls}"><i class="pg-dot${kind ? ' ' + kind : ''}"></i></i>`;
-            const AD_A = c => `<div class="pg-ad ${c}" style="left:14px;top:162px;width:182px;height:46px"><em>Quảng cáo</em><b>Giảm giá 90% hôm nay</b><small>Bấm để nhận ngay</small></div>`;
-            const AD_F = c => `<div class="pg-ad pg-fl ${c}" style="right:10px;top:232px;width:78px;height:54px"><em>QC</em><b>Tải app</b><small>Miễn phí</small></div>`;
-            const CK = c => `<div class="pg-ck ${c}"><span>Trang này dùng cookie</span><b>OK</b></div>`;
-            const POP = c => `<div class="pg-pop ${c}"><i class="pg-x">×</i><div class="pg-gf"></div><b>Nhận quà miễn phí!</b><span>Xem ngay</span></div>`;
-            const TAP = (c, x, y) => `<i class="pg-tp ${c}" style="left:${x}px;top:${y}px"></i>`;
-            const RINGSVG = (cls, fcls, x, y) => `<svg class="pg-rg ${cls}" viewBox="0 0 56 56" width="56" height="56" style="left:${x}px;top:${y}px" aria-hidden="true"><circle class="b" cx="28" cy="28" r="22"/><circle class="f ${fcls}" cx="28" cy="28" r="22"/></svg>`;
-            const SW_ROWS = ['Chặn quảng cáo', 'Tự động chặn', 'Popup &amp; khung chứa', 'Chặn chuyển hướng']
-                .map((x, i) => `<div class="pg-rw"><span>${x}</span><u class="s3k${i}"><b class="s3n${i}"></b></u></div>`).join('');
+            /* ---------- Minh hoạ mới: tối giản, hiện đại ---------- */
+            const orb = icon => '<i class="nv-r r1"></i><i class="nv-r r2"></i><i class="nv-r r3"></i><div class="nv-orb">' + icon + '</div>';
+            const swKF = [0, 1, 2].map(i => {
+                const t = 54 + i * 4;
+                return `@keyframes nvSk${i}{0%,${t}%{background:#4a4954}${t + 3}%,100%{background:var(--ne)}}` +
+                    `@keyframes nvSn${i}{0%,${t}%{transform:translateX(0)}${t + 3}%,100%{transform:translateX(11px)}}`;
+            }).join('');
+            const SW_ROWS = ['Chặn quảng cáo', 'Tự động chặn', 'Popup &amp; khung chứa']
+                .map((x, i) => `<div class="nv-rw"><span>${x}</span><u style="animation:nvSk${i} 6.5s linear infinite"><b style="animation:nvSn${i} 6.5s linear infinite"></b></u></div>`).join('');
+            const lines = '<i class="nv-ln" style="width:70%"></i><i class="nv-ln" style="width:48%"></i>';
 
             const PAGES = [
                 {
                     t: 'Một dấu chấm, trang web sạch bóng',
                     s: 'Dot Ads lặng lẽ quét sạch banner, popup và tab lạ ngay khi trang vừa tải.',
-                    v: () => ph(BASE_PG + AD_A('s1a') + AD_F('s1c') + CK('s1d') +
-                        '<div class="pg-dim s1m"></div>' + POP('s1p') +
-                        '<i class="pg-wv s1w"></i>' + dotW('') +
-                        `<div class="pg-bdw s1b"><span class="pg-pill ok">${ic('check', 12)}Đã chặn 4 quảng cáo</span></div>` +
-                        '<div class="pg-ov s1k">' +
-                        [[170, 70, 0], [26, 104, .5], [176, 292, 1]].map(a => `<span class="pg-spk" style="left:${a[0]}px;top:${a[1]}px;animation-delay:${a[2]}s">${fic(STAR, 14)}</span>`).join('') +
-                        '</div>')
+                    v: () => '<div class="nv-s">' + orb(ic('shield', 54)) +
+                        [['-118px', '-118px', 'Quảng cáo', 0], ['116px', '-92px', 'Popup', 1.1], ['-102px', '112px', 'Banner', 2.2], ['110px', '124px', 'Tab lạ', 3.3]]
+                            .map(a => `<span class="nv-ad" style="--x:${a[0]};--y:${a[1]};animation-delay:${a[3]}s">${a[2]}</span>`).join('') +
+                        `<span class="nv-pill ok nv-p1">${ic('check', 12)}Đã chặn</span></div>`
                 },
                 {
                     t: 'Chạm một cái, bật hay tắt',
                     s: 'Chạm chấm sáng để tạm dừng. Chạm thêm lần nữa là lá chắn quay lại.',
-                    v: () => ph(BASE_PG + AD_A('s2a') + AD_F('s2f') +
-                        '<span class="pg-st on fl s2g"><i></i>Đang bật</span><span class="pg-st off fl s2x"><i></i>Đang tắt</span>' +
-                        dotW('s2g') + dotW('s2x', 'gy') + TAP('s2t', 18, 358) +
-                        '<div class="pg-cpw s2n1"><span class="pg-pill">Chạm một lần: tạm tắt</span></div>' +
-                        '<div class="pg-cpw s2n2"><span class="pg-pill">Chạm lần nữa: bật lại</span></div>')
+                    v: () => '<div class="nv-s"><div class="nv-tg"><i class="nv-kn"></i></div>' +
+                        '<span class="nv-pill ok nv-tl nv-la">Đang bật</span><span class="nv-pill nv-tl nv-lb">Đang tắt</span></div>'
                 },
                 {
                     t: 'Giữ chấm, mở bảng điều khiển',
                     s: 'Giữ đến khi chấm chuyển đỏ để bật tắt tính năng, thêm phần tử, từ khoá hay liên kết cần chặn.',
-                    v: () => ph(BASE_PG + dotW('s3g') + '<i class="pg-dw s3r"><i class="pg-dot rd"></i></i>' +
-                        RINGSVG('s3rg', 's3f', -10, 330) + TAP('s3t', 18, 358) +
-                        '<div class="pg-cpw s3l" style="top:312px"><span class="pg-pill">Giữ 0,4s đến khi chấm đỏ</span></div>' +
-                        '<div class="pg-dim s3d" style="z-index:5"></div>' +
-                        '<div class="pg-sh s3s" style="left:8px;right:8px;top:104px;height:262px">' +
-                        '<i class="pg-gr"></i>' +
-                        '<div class="pg-sht"><span>D<i class="ob-od"></i>t Ads</span><span class="pg-st on"><i></i>Đang bật</span></div>' +
-                        '<div class="pg-rws">' + SW_ROWS + '</div>' +
-                        '<div class="pg-tb"><span class="a">Phần tử</span><span>Từ khoá</span><span>Liên kết</span></div>' +
-                        `<div class="pg-ip"><span>smartbanner hoặc .banner</span><b>${ic('plus', 12)}</b></div></div>`)
+                    v: () => '<div class="nv-s"><svg class="nv-hr" viewBox="0 0 100 100" width="112" height="112" aria-hidden="true"><circle class="b" cx="50" cy="50" r="44"/><circle class="f" cx="50" cy="50" r="44"/></svg>' +
+                        '<i class="nv-dt"></i><span class="nv-pill nv-hp">Giữ đến khi chấm đỏ</span>' +
+                        '<div class="nv-sh"><i class="nv-gr"></i><div class="nv-rws">' + SW_ROWS + '</div></div></div>'
                 },
                 {
                     t: 'Thấy phiền là ẩn',
                     s: 'Nhấn giữ bất kỳ phần tử nào trên trang, xem chi tiết rồi ẩn nó ngay.',
-                    v: () => ph(BASE_PG + AD_A('s4a') + dotW('') +
-                        '<div class="pg-ov s4h"><i class="pg-hl" style="left:10px;top:158px;width:190px;height:54px"></i><span class="pg-lb" style="left:10px;top:142px">div.banner</span></div>' +
-                        '<div class="pg-cpw s4c" style="top:112px;left:0;right:0;text-align:center"><span class="pg-pill">Nhấn giữ phần tử</span></div>' +
-                        RINGSVG('s4rg', 's4f', 77, 157) + TAP('s4t1', 105, 185) +
-                        '<div class="pg-sh s4s" style="left:8px;right:8px;top:210px;height:156px;display:flex;flex-direction:column;transform-origin:50% 100%">' +
-                        '<i class="pg-gr"></i>' +
-                        '<div class="pg-sht"><span style="font-size:13px">Phần tử</span><small class="pg-tg">&lt;div&gt; · .banner</small></div>' +
-                        `<div class="pg-if"><small>Selector</small><span>#app &gt; div.banner</span><b>${ic('copy', 10)}</b></div>` +
-                        '<div class="pg-bt"><span>Phần tử cha</span><b class="s4k">Ẩn phần tử này</b></div></div>' +
-                        TAP('s4t2', 149, 338) +
-                        `<div class="pg-ts s4b"><span class="pg-pill ok">${ic('check', 12)}Đã ẩn phần tử</span></div>`)
+                    v: () => '<div class="nv-s"><div class="nv-cd"><em>Quảng cáo</em><b>Giảm giá 90%</b><small>Bấm để nhận ngay</small></div>' +
+                        '<div class="nv-sel"><span>div.banner</span></div><div class="nv-bt">Ẩn phần tử này</div>' +
+                        `<span class="nv-pill ok nv-dn">${ic('check', 12)}Đã ẩn phần tử</span></div>`
                 },
                 {
                     t: 'Càng dùng, càng sạch',
                     s: 'Dot Ads tự nhớ khung quảng cáo và popup, lần tải sau chặn ngay từ đầu, không kịp hiện.',
-                    v: () => ph(BASE_PG + AD_A('s5a') +
-                        `<div class="pg-bdw s5k" style="left:0;right:0;top:174px;text-align:center"><span class="pg-pill ok">${ic('check', 12)}Đã chặn quảng cáo</span></div>` +
-                        `<div class="pg-bdw s5m" style="left:0;right:0;top:214px;text-align:center"><span class="pg-pill ok">${ic('bookmark', 12)}Đã nhớ cho lần sau</span></div>` +
-                        `<div class="pg-gh s5g">${ic('shield', 14)}<span>Chặn từ lúc tải, không hiện</span></div>` +
-                        dotW('') +
-                        '<div class="pg-tr s5c1"><span class="pg-pill">Lần đầu</span></div>' +
-                        '<div class="pg-tr s5c2"><span class="pg-pill ok">Tải lại</span></div>' +
-                        '<i class="pg-pr s5p"></i>' +
-                        `<div class="pg-rl s5r"><span class="pg-rlc">${ic('reload', 20)}</span></div>`)
+                    v: () => '<div class="nv-s">' +
+                        `<div class="nv-pn" style="left:14px"><i class="nv-pb"></i>${lines}<div class="nv-pa"><em>Quảng cáo</em></div></div>` +
+                        `<div class="nv-pn" style="left:174px"><i class="nv-pb"></i>${lines}<div class="nv-pg">${ic('shield', 22)}</div></div>` +
+                        `<span class="nv-rl">${ic('reload', 18)}</span>` +
+                        '<span class="nv-pill nv-cp" style="left:70px">Lần đầu</span><span class="nv-pill ok nv-cp" style="left:230px">Tải lại</span>' +
+                        `<span class="nv-pill ok nv-bk">${ic('bookmark', 12)}Đã nhớ cho lần sau</span></div>`
                 }
             ];
 
@@ -3825,8 +3707,6 @@ to{opacity:1;transform:scale(1)}}
 .ob-stage{flex:1 1 0;min-height:0;position:relative}
 .ob-v{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;will-change:transform,opacity;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 .ob-fr{position:relative;flex:none;width:300px;height:400px;transform:scale(var(--k,1))}
-.ob-fr::before{content:"";position:absolute;left:14px;right:14px;top:40px;bottom:-14px;border-radius:50%;pointer-events:none;
-    background:radial-gradient(closest-side,rgba(var(--nr),.3),transparent 74%);filter:blur(8px)}
 .ob-txt{padding:0 26px;text-align:center;min-height:120px}
 .ob-t{font-size:22px;font-weight:700;line-height:1.22;letter-spacing:-.01em;max-width:340px;margin:0 auto}
 .ob-s{font-size:15px;font-weight:500;line-height:1.42;max-width:330px;margin:8px auto 0}
@@ -3849,96 +3729,99 @@ to{opacity:1;transform:scale(1)}}
 .ob-od{display:inline-block;width:.34em;height:.34em;margin:0 .08em 0 .06em;border-radius:50%;vertical-align:.1em;
     background:var(--ne);box-shadow:0 0 6px 1px rgba(var(--nr),.85)}
 
-/* ----- điện thoại + trang web giả ----- */
-.ph{position:absolute;left:38px;top:6px;width:224px;height:388px;border-radius:38px;padding:7px;
-    background:linear-gradient(160deg,#2c2a36,#14131a);
-    box-shadow:0 34px 60px -14px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.16),inset 0 1px 0 rgba(255,255,255,.2)}
-.ph::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:9;
-    background:linear-gradient(120deg,rgba(255,255,255,.1),transparent 34%)}
-.ph-nt{position:absolute;top:13px;left:50%;width:62px;height:17px;margin-left:-31px;border-radius:10px;background:#07060b;z-index:8}
-.ph-sc{position:relative;width:100%;height:100%;border-radius:31px;overflow:hidden;background:linear-gradient(180deg,#1e1d27,#13121a)}
-.pg-l{position:absolute;left:14px;height:7px;border-radius:4px;background:rgba(255,255,255,.13)}
-.pg-av{position:absolute;left:14px;top:40px;width:18px;height:18px;border-radius:50%;background:rgba(var(--nr),.55)}
-.pg-lg{position:absolute;left:38px;top:45px;width:66px;height:8px;border-radius:4px;background:rgba(255,255,255,.2)}
-.pg-hero{position:absolute;left:14px;top:66px;width:182px;height:60px;border-radius:12px;overflow:hidden;
-    background:linear-gradient(135deg,rgba(var(--nr),.4),rgba(130,120,220,.28) 70%)}
-.pg-hero::after{content:"";position:absolute;right:14px;top:12px;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 16px 3px rgba(255,255,255,.3)}
-.pg-ov{position:absolute;inset:0;z-index:3;pointer-events:none}
-.pg-ad{position:absolute;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:0 12px;border-radius:12px;overflow:hidden;color:#fff;font-size:11.5px;font-weight:700;
-    background:linear-gradient(135deg,#ff8a5c,#ff4f8b);box-shadow:0 6px 16px rgba(255,80,120,.25)}
-.pg-ad small{font-size:9.5px;font-weight:600;opacity:.85;margin-top:2px}
-.pg-ad em{position:absolute;top:5px;right:7px;font-style:normal;font-size:8px;font-weight:600;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,.4)}
-.pg-fl{background:linear-gradient(135deg,#ffd45e,#ff9d3d);color:#3a2300;box-shadow:0 6px 16px rgba(255,170,60,.25)}
-.pg-ck{position:absolute;z-index:1;left:0;right:0;bottom:0;height:40px;padding:0 12px 0 34px;display:flex;align-items:center;justify-content:space-between;
-    background:#2a2832;color:#fff;font-size:9.5px;font-weight:600;border-top:1px solid rgba(255,255,255,.1)}
-.pg-ck b{padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.18);font-size:9px}
-.pg-dim{position:absolute;inset:0;z-index:2;background:rgba(10,8,16,.58)}
-.pg-pop{position:absolute;z-index:3;left:30px;top:92px;width:150px;height:104px;padding:10px;border-radius:16px;text-align:center;background:#fff;box-shadow:0 18px 40px rgba(0,0,0,.45)}
-.pg-x{position:absolute;top:4px;right:8px;font-style:normal;font-size:14px;color:#999;line-height:1}
-.pg-gf{height:38px;border-radius:10px;background:linear-gradient(135deg,#ffb86b,#ff5f8f);margin-bottom:6px}
-.pg-pop b{display:block;font-size:11px;color:#1b1a22}
-.pg-pop span{display:inline-block;margin-top:6px;padding:4px 14px;border-radius:999px;background:#ff4f8b;color:#fff;font-size:9.5px;font-weight:700}
-.pg-dw{position:absolute;left:14px;top:354px;width:8px;height:8px;z-index:4;will-change:transform,opacity}
-.pg-dot{position:absolute;inset:0;border-radius:50%;background:var(--ne);box-shadow:0 0 8px 3px rgba(var(--nr),.8);animation:pgDot 2.4s ease-in-out infinite}
-.pg-dot.gy{background:#8b8b93;box-shadow:none;animation:none;opacity:.8}
-.pg-dot.rd{background:linear-gradient(180deg,#F20021,#FF404D);box-shadow:0 0 12px #F8132C;animation:none}
-@keyframes pgDot{0%,100%{opacity:.6;transform:scale(.9)}50%{opacity:1;transform:scale(1.2)}}
-@keyframes pgTw{0%,100%{opacity:.4;transform:scale(.7) rotate(0)}50%{opacity:1;transform:scale(1.15) rotate(25deg)}}
-@keyframes pgSpin{to{transform:rotate(360deg)}}
-.pg-wv{position:absolute;left:-82px;top:258px;width:200px;height:200px;border-radius:50%;z-index:4;pointer-events:none;
-    background:radial-gradient(circle,transparent 54%,rgba(var(--nr),.6) 62%,transparent 70%);will-change:transform,opacity}
-.pg-spk{position:absolute;color:var(--ne);animation:pgTw 1.8s ease-in-out infinite}
-.pg-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap;
-    background:#2f2e39;color:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:0 8px 18px rgba(0,0,0,.4)}
-.pg-pill.ok{background:#17161d;color:var(--ne);border-color:rgba(var(--nr),.45)}
-.pg-bdw{position:absolute;left:30px;top:343px;z-index:4}
-.pg-cpw{position:absolute;z-index:4;left:14px;top:314px}
-.pg-tr{position:absolute;z-index:4;right:12px;top:36px}
-.pg-ts{position:absolute;z-index:7;left:0;right:0;bottom:18px;text-align:center}
-.pg-st{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:9.5px;font-weight:700;white-space:nowrap;background:rgba(var(--nr),.16);color:var(--ne)}
-.pg-st i{display:block;width:5px;height:5px;border-radius:50%;background:currentColor}
-.pg-st.off{background:rgba(255,255,255,.12);color:rgba(255,255,255,.65)}
-.pg-st.fl{position:absolute;z-index:4;left:30px;top:346px;background:#17161d;box-shadow:0 4px 10px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12)}
-.pg-st.fl.off{color:#b9b9c2}
-.pg-tp{position:absolute;z-index:7;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;opacity:0;pointer-events:none;
-    background:rgba(255,255,255,.22);border:1.5px solid rgba(255,255,255,.7)}
-.pg-rg{position:absolute;z-index:7;transform:rotate(-90deg);overflow:visible;pointer-events:none}
-.pg-rg .b{fill:none;stroke:rgba(255,255,255,.16);stroke-width:2}
-.pg-rg .f{fill:none;stroke:var(--ne);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:138.2;stroke-dashoffset:138.2}
-.pg-sh{position:absolute;z-index:6;border-radius:22px;padding:8px 12px 12px;color:#fff;
-    background:linear-gradient(180deg,#34333e,#22212a);border:1px solid rgba(255,255,255,.16);
-    box-shadow:0 -10px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16);transform-origin:10px 254px;will-change:transform,opacity}
-.pg-gr{display:block;width:28px;height:3px;margin:0 auto 8px;border-radius:2px;background:rgba(255,255,255,.28)}
-.pg-sht{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:14px;font-weight:700}
-.pg-tg{font-size:9px;font-weight:600;color:rgba(255,255,255,.5)}
-.pg-rws{border-radius:12px;overflow:hidden;background:rgba(255,255,255,.07)}
-.pg-rw{display:flex;align-items:center;justify-content:space-between;gap:8px;height:30px;padding:0 10px;font-size:10px;font-weight:500}
-.pg-rw span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pg-rw+.pg-rw{border-top:1px solid rgba(255,255,255,.06)}
-.pg-rw u{position:relative;flex:none;width:26px;height:15px;border-radius:8px;background:#4a4954}
-.pg-rw u b{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
-.pg-tb{display:flex;gap:2px;padding:2px;margin-top:8px;border-radius:9px;background:rgba(255,255,255,.07)}
-.pg-tb span{flex:1;text-align:center;padding:5px 0;border-radius:7px;font-size:9.5px;font-weight:500;color:rgba(255,255,255,.55)}
-.pg-tb span.a{background:rgba(255,255,255,.15);color:#fff}
-.pg-ip{display:flex;align-items:center;gap:6px;margin-top:8px}
-.pg-ip span{flex:1;height:28px;line-height:28px;padding:0 9px;border-radius:9px;font-size:9.5px;color:rgba(255,255,255,.35);background:rgba(255,255,255,.08)}
-.pg-ip b{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:var(--ne);color:var(--ink)}
-.pg-hl{position:absolute;border:1.5px solid var(--ne);border-radius:14px;background:rgba(var(--nr),.14);box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 20px rgba(var(--nr),.45)}
-.pg-lb{position:absolute;padding:2px 7px;border-radius:6px 6px 0 0;font-size:8.5px;font-weight:700;color:var(--ink);background:var(--ne)}
-.pg-if{display:flex;align-items:center;gap:6px;height:34px;padding:0 6px 0 10px;border-radius:11px;background:rgba(255,255,255,.08)}
-.pg-if small{flex:none;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45)}
-.pg-if span{flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pg-if b{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:7px;background:rgba(255,255,255,.14)}
-.pg-bt{display:flex;gap:8px;margin-top:auto}
-.pg-bt span,.pg-bt b{flex:1;display:flex;align-items:center;justify-content:center;height:32px;border-radius:11px;font-size:10px;font-weight:600;background:rgba(255,255,255,.12)}
-.pg-bt b{background:var(--ne);color:var(--ink)}
-.pg-gh{position:absolute;z-index:3;left:14px;top:162px;width:182px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px;
-    border:1.5px dashed rgba(var(--nr),.85);background:rgba(var(--nr),.1);color:var(--ne);font-size:10px;font-weight:700}
-.pg-pr{position:absolute;z-index:6;left:0;right:0;top:32px;height:3px;background:var(--ne);box-shadow:0 0 10px rgba(var(--nr),.8);transform-origin:0 50%}
-.pg-rl{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(10,8,16,.4)}
-.pg-rlc{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#2f2e39;color:var(--ne);border:1px solid rgba(255,255,255,.16);animation:pgSpin 1s linear infinite}
-${SCENE_KF}
-${ANI_CSS}
+/* ----- minh hoạ mới ----- */
+.nv-s{position:absolute;inset:0}
+.nv-s *{box-sizing:border-box}
+.nv-orb{position:absolute;left:50%;top:170px;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--ink);
+    background:linear-gradient(155deg,#fff -40%,var(--ne) 55%,rgba(var(--ar),.8) 100%);
+    box-shadow:0 0 70px rgba(var(--nr),.45),0 18px 40px rgba(0,0,0,.45),inset 0 1.5px 0 rgba(255,255,255,.65);animation:nvFloat 4s ease-in-out infinite}
+.nv-r{position:absolute;left:50%;top:170px;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;border:1.5px solid rgba(var(--nr),.6);opacity:0;animation:nvRing 3.6s ease-out infinite}
+.nv-r.r2{animation-delay:1.2s}.nv-r.r3{animation-delay:2.4s}
+@keyframes nvRing{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.5);opacity:0}}
+@keyframes nvFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.nv-pill{position:absolute;left:50%;top:310px;display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;
+    color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transform:translateX(-50%)}
+.nv-pill.ok{color:var(--ne);border-color:rgba(var(--nr),.4);background:rgba(var(--nr),.1)}
+
+/* 1 */
+.nv-ad{position:absolute;left:50%;top:170px;padding:7px 12px;border-radius:12px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap;opacity:0;
+    background:linear-gradient(135deg,#ff8a5c,#ff4f8b);box-shadow:0 8px 20px rgba(255,80,120,.3);animation:nvSuck 4.4s ease-in-out infinite}
+@keyframes nvSuck{0%{opacity:0;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.9)}
+12%,50%{opacity:1;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(1)}
+78%{opacity:0;transform:translate(-50%,-50%) scale(.2)}100%{opacity:0;transform:translate(-50%,-50%) scale(.2)}}
+.nv-p1{animation:nvP1 4.4s ease-in-out infinite}
+@keyframes nvP1{0%,30%{opacity:0;transform:translate(-50%,8px)}45%,90%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,0)}}
+
+/* 2 */
+.nv-tg{position:absolute;left:80px;top:134px;width:140px;height:72px;border-radius:999px;background:var(--ne);
+    box-shadow:0 0 50px rgba(var(--nr),.5),inset 0 1px 0 rgba(255,255,255,.4);animation:nvTgBg 5s ease-in-out infinite,nvTgPress 5s ease-in-out infinite}
+.nv-kn{position:absolute;left:8px;top:8px;width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.35);transform:translateX(68px);animation:nvKn 5s cubic-bezier(.5,0,.2,1) infinite}
+@keyframes nvTgBg{0%,38%{background:var(--ne);box-shadow:0 0 50px rgba(var(--nr),.5),inset 0 1px 0 rgba(255,255,255,.4)}
+46%,86%{background:#4a4954;box-shadow:0 0 0 rgba(0,0,0,0),inset 0 1px 0 rgba(255,255,255,.12)}
+94%,100%{background:var(--ne);box-shadow:0 0 50px rgba(var(--nr),.5),inset 0 1px 0 rgba(255,255,255,.4)}}
+@keyframes nvTgPress{0%,38%{transform:scale(1)}41%{transform:scale(.94)}46%,86%{transform:scale(1)}89%{transform:scale(.94)}94%,100%{transform:scale(1)}}
+@keyframes nvKn{0%,38%{transform:translateX(68px)}46%,86%{transform:translateX(0)}94%,100%{transform:translateX(68px)}}
+.nv-tl{top:262px}
+.nv-la{animation:nvLa 5s ease-in-out infinite}.nv-lb{animation:nvLb 5s ease-in-out infinite}
+@keyframes nvLa{0%,38%{opacity:1}44%,92%{opacity:0}98%,100%{opacity:1}}
+@keyframes nvLb{0%,38%{opacity:0}44%,92%{opacity:1}98%,100%{opacity:0}}
+
+/* 3 */
+.nv-hr{position:absolute;left:94px;top:74px;transform:rotate(-90deg);overflow:visible;animation:nvFade 6.5s linear infinite}
+.nv-hr .b{fill:none;stroke:rgba(255,255,255,.14);stroke-width:2.5}
+.nv-hr .f{fill:none;stroke:var(--ne);stroke-width:3;stroke-linecap:round;stroke-dasharray:276.46;stroke-dashoffset:276.46;animation:nvHf 6.5s linear infinite}
+.nv-dt{position:absolute;left:143px;top:123px;width:14px;height:14px;border-radius:50%;background:var(--ne);box-shadow:0 0 12px 3px rgba(var(--nr),.8);animation:nvDc 6.5s ease-in-out infinite,nvFade 6.5s linear infinite}
+@keyframes nvFade{0%{opacity:0}2%,40%{opacity:1}46%,100%{opacity:0}}
+@keyframes nvHf{0%,8%{stroke-dashoffset:276.46;stroke:var(--ne)}36%,100%{stroke-dashoffset:0;stroke:#ff404d}}
+@keyframes nvDc{0%,8%{background:var(--ne);box-shadow:0 0 12px 3px rgba(var(--nr),.8);transform:scale(1)}30%,100%{background:#ff404d;box-shadow:0 0 18px #f8132c;transform:scale(1.6)}}
+.nv-hp{top:214px;animation:nvHp 6.5s ease-in-out infinite}
+@keyframes nvHp{0%{opacity:0;transform:translateX(-50%)}6%,36%{opacity:1;transform:translateX(-50%)}42%,100%{opacity:0;transform:translateX(-50%)}}
+.nv-sh{position:absolute;left:14px;right:14px;top:196px;height:176px;border-radius:26px;padding:10px 14px;
+    background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.07));border:1px solid rgba(255,255,255,.18);
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 -10px 40px rgba(0,0,0,.4);
+    opacity:0;transform:translateY(130%);animation:nvSheet 6.5s linear infinite}
+@keyframes nvSheet{0%,42%{transform:translateY(130%);opacity:0;animation-timing-function:cubic-bezier(.16,1,.3,1)}
+54%{transform:translateY(0);opacity:1}86%{transform:translateY(0);opacity:1}94%,100%{transform:translateY(130%);opacity:0}}
+.nv-gr{display:block;width:34px;height:4px;margin:0 auto 12px;border-radius:2px;background:rgba(255,255,255,.3)}
+.nv-rws{border-radius:16px;overflow:hidden;background:rgba(255,255,255,.08)}
+.nv-rw{display:flex;align-items:center;justify-content:space-between;gap:8px;height:42px;padding:0 14px;font-size:12px;font-weight:600}
+.nv-rw+.nv-rw{border-top:1px solid rgba(255,255,255,.07)}
+.nv-rw u{position:relative;flex:none;width:34px;height:20px;border-radius:10px;background:#4a4954}
+.nv-rw u b{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+@keyframes nvKn2{}
+${swKF}
+
+/* 4 */
+.nv-cd{position:absolute;left:40px;top:110px;width:220px;height:96px;border-radius:20px;padding:0 18px;display:flex;flex-direction:column;justify-content:center;color:#fff;
+    background:linear-gradient(135deg,#ff8a5c,#ff4f8b);box-shadow:0 14px 34px rgba(255,80,120,.3);animation:nvCd 6.5s ease-in-out infinite}
+.nv-cd b{font-size:15px;font-weight:700}
+.nv-cd small{font-size:11px;font-weight:600;opacity:.85;margin-top:3px}
+.nv-cd em{position:absolute;top:8px;right:12px;font-style:normal;font-size:9px;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(0,0,0,.35)}
+@keyframes nvCd{0%,52%{opacity:1;transform:none}60%,92%{opacity:0;transform:scale(.88)}100%{opacity:1;transform:none}}
+.nv-sel{position:absolute;left:34px;top:104px;width:232px;height:108px;border:2px solid var(--ne);border-radius:24px;background:rgba(var(--nr),.12);box-shadow:0 0 30px rgba(var(--nr),.35);opacity:0;animation:nvSel 6.5s ease-in-out infinite}
+.nv-sel span{position:absolute;left:14px;top:-9px;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;background:var(--ne);color:var(--ink)}
+@keyframes nvSel{0%,10%{opacity:0;transform:scale(1.08)}18%,52%{opacity:1;transform:scale(1)}58%,100%{opacity:0;transform:scale(1)}}
+.nv-bt{position:absolute;left:50%;top:250px;padding:12px 22px;border-radius:999px;font-size:13px;font-weight:700;white-space:nowrap;background:var(--ne);color:var(--ink);
+    box-shadow:0 10px 26px rgba(var(--nr),.4);opacity:0;transform:translate(-50%,14px);animation:nvBt 6.5s ease-in-out infinite}
+@keyframes nvBt{0%,22%{opacity:0;transform:translate(-50%,14px) scale(1)}30%{opacity:1;transform:translate(-50%,0) scale(1)}44%{opacity:1;transform:translate(-50%,0) scale(1)}47%{opacity:1;transform:translate(-50%,0) scale(.92)}50%{opacity:1;transform:translate(-50%,0) scale(1)}56%{opacity:1;transform:translate(-50%,0) scale(1)}62%,100%{opacity:0;transform:translate(-50%,0) scale(1)}}
+.nv-dn{top:250px;opacity:0;animation:nvDn 6.5s ease-in-out infinite}
+@keyframes nvDn{0%,60%{opacity:0;transform:translate(-50%,8px)}68%,90%{opacity:1;transform:translate(-50%,0)}96%,100%{opacity:0;transform:translate(-50%,0)}}
+
+/* 5 */
+.nv-pn{position:absolute;top:100px;width:112px;height:150px;border-radius:22px;padding:14px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);box-shadow:0 14px 34px rgba(0,0,0,.35)}
+.nv-pb{display:block;width:34px;height:8px;border-radius:4px;background:rgba(var(--nr),.55);margin-bottom:10px}
+.nv-ln{display:block;height:6px;border-radius:3px;background:rgba(255,255,255,.14);margin-bottom:7px}
+.nv-pa{position:absolute;left:10px;right:10px;top:84px;height:42px;border-radius:12px;background:linear-gradient(135deg,#ff8a5c,#ff4f8b);display:flex;align-items:center;justify-content:center;opacity:0;animation:nvPa 6.5s ease-in-out infinite}
+.nv-pa em{font-style:normal;font-size:10px;font-weight:700;color:#fff}
+@keyframes nvPa{0%,8%{opacity:0;transform:translateY(-6px)}16%,34%{opacity:1;transform:none}44%,100%{opacity:0;transform:scale(.8)}}
+.nv-pg{position:absolute;left:10px;right:10px;top:84px;height:42px;border-radius:12px;border:1.5px dashed rgba(var(--nr),.8);background:rgba(var(--nr),.1);color:var(--ne);display:flex;align-items:center;justify-content:center;opacity:0;animation:nvPg 6.5s ease-in-out infinite}
+@keyframes nvPg{0%,52%{opacity:0;transform:scale(.9)}62%,92%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1)}}
+.nv-rl{position:absolute;left:132px;top:157px;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--ne);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);animation:nvRl 6.5s ease-in-out infinite}
+@keyframes nvRl{0%,44%{transform:rotate(0);opacity:.35}50%{opacity:1}58%{transform:rotate(360deg);opacity:1}64%,100%{transform:rotate(360deg);opacity:.35}}
+.nv-cp{top:268px}
+.nv-bk{top:314px;opacity:0;animation:nvBk 6.5s ease-in-out infinite}
+@keyframes nvBk{0%,60%{opacity:0;transform:translate(-50%,8px)}70%,92%{opacity:1;transform:translate(-50%,0)}98%,100%{opacity:0;transform:translate(-50%,0)}}
+
 @media (prefers-reduced-motion:reduce){.ob *,.ob *::before,.ob *::after{animation-duration:.01s!important}}`;
 
             const css = document.createElement('style');

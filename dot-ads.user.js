@@ -168,7 +168,7 @@
     const ATTR = 'data-gdar', INV_ATTR = 'data-gdar-inv', PICK_ATTR = 'data-gdar-pick', PRESS_ATTR = 'data-gdar-press';
     const LNK_ATTR = 'data-gdar-lk', TOUCH_ATTR = 'data-gdar-t', LNK_HREF = 'data-gdar-href', GUARD_ATTR = 'data-gdar-g';
     const Q_ATTR = 'data-gdar-q', MARK = 'data-gdar-m', OK_ATTR = 'data-gdar-ok', PA_ATTR = 'data-gdar-pa', PICKED_ATTR = 'data-gdar-picked';
-    const DECIDE_MS = 700, GUARD_MS = 20000, WATCH_MS = 3000, INV_SCAN_MS = 150, MEDIA_SWEEP_MS = 250, LEARN_MAX = 40;
+    const DECIDE_MS = 700, GUARD_MS = 20000, WATCH_MS = 3000, INV_SCAN_MS = 200, MEDIA_SWEEP_MS = 250, LEARN_MAX = 40;
     const AUTO_WORDS = ['ad', 'ads', 'adv', 'popup', 'banner', 'app-download', 'float-ad', 'float-ads', 'floating-ad', 'float-banner', 'floating-banner'];
     const NAME_RE = /^\*?[\w-]+\*?$/;
     const INV_SEL = 'a[href],area[href],iframe';
@@ -652,17 +652,18 @@
         autoStyle.textContent = (set.on && set.auto) ? AUTO_CSS : '';
         const userSels = [...glb.sel, ...site.sel].map(toCss).filter(validSel);
         const ls = learnSels(), as = attrSel();
-        const ps = (set.on && set.pop) ? learnPops() : [];
-        const psCss = ps.map(s => `${s}${NOT_ME}`);
-        ruleStyle.textContent = set.on ? [BUILTIN_CSS, hideAll(userSels), hideAll(ls), hideAll(psCss), as ? `${as}{${HIDE}}` : ''].join('\n') : '';
-        killSel = set.on ? [...BUILTIN_SEL, ...userSels, ...ls, ...psCss, (set.auto ? AUTO_SEL : '')].filter(Boolean).join(',') : '';
+        ruleStyle.textContent = set.on ? [BUILTIN_CSS, hideAll(userSels), hideAll(ls), as ? `${as}{${HIDE}}` : ''].join('\n') : '';
+        killSel = set.on ? [...BUILTIN_SEL, ...userSels, ...ls, (set.auto ? AUTO_SEL : '')].filter(Boolean).join(',') : '';
         if (lastRules) { lastRules.kill = killSel; publishRules(); }
 
         let guardCss = '';
-        popKillSel = ps.join(',');
+        popKillSel = '';
         if (set.on && set.pop) {
+            const ps = learnPops();
+            if (ps.length) guardCss += `html[${GUARD_ATTR}] :is(${ps.join(',')})${NOT_ME}{${HIDE}}\n`;
             guardCss += `html[${GUARD_ATTR}] :is(${SUSPECT}):not([${OK_ATTR}],html,body,#gdar-host)${NOT_PLAYER}{${QHIDE}}\n`;
             guardCss += `html[${GUARD_ATTR}] [${Q_ATTR}]${NOT_ME}${NOT_PLAYER}{${QHIDE}}`;
+            popKillSel = ps.join(',');
         }
         lastCss = [PAGE_CSS, autoStyle.textContent, ruleStyle.textContent, guardCss].join('\n');
         setAdopted(lastCss);
@@ -745,7 +746,7 @@
         return false;
     }
     const purgePop = root => {
-        if (!popKillSel || !set.on || !set.pop || !root) return;
+        if (!popKillSel || !set.on || !set.pop || !root || !guardOn()) return;
         eachMatch(root, popKillSel, e => { if (kill(e, true)) unlockScroll(); });
     };
     const purgeSel = root => { if (set.on && killSel && root) eachMatch(root, killSel, e => kill(e)); };
@@ -1025,7 +1026,7 @@
             return !!(r && r.on) && Date.now() - (+(e && e.getAttribute('data-gdar-t')) || 0) < (ms || 3000);
         };
 
-        let gT = 0, gOK = false, gHref = '', gDepth = 0, popSig = 0, gIsoT = 0, tapN = 0, hijT = 0, navDest = null;
+        let gT = 0, gOK = false, gHref = '', gDepth = 0, popSig = 0, gIsoT = 0, tapN = 0, hijT = 0;
         ['pointerdown', 'touchstart', 'mousedown', 'click', 'keydown'].forEach(t => W.addEventListener(t, e => {
             if (!e.isTrusted) return;
             const el = e.target;
@@ -1427,10 +1428,8 @@
                 if (!e.cancelable || e.hashChange || e.downloadRequest != null) return;
                 const r = rules();
                 if (!r || !r.on) return;
-                const d0 = parse(e.destination.url);
-                if (d0) navDest = { h: d0.hostname.toLowerCase(), t: Date.now() };
                 if (appBad(e.destination.url)) { popSig = Date.now(); e.preventDefault(); return; }
-                const o = d0;
+                const o = parse(e.destination.url);
                 if (!o || o.origin === W.location.origin) return;
                 if (e.userInitiated && badNav(e.destination.url)) { popSig = Date.now(); e.preventDefault(); return; }
                 if (e.userInitiated) {
@@ -1453,14 +1452,10 @@
         W.addEventListener('beforeunload', e => {
             const r = rules();
             if (!r || !r.on) return;
-            const now = Date.now();
-            let dh = '';
-            if (navDest && now - navDest.t < 2500) dh = navDest.h;
-            else if (gHref && now - gT < 3000) { const g = parse(gHref); dh = g ? g.hostname.toLowerCase() : ''; }
-            if (locked() && dh && !same(dh) && !okHost(dh)) { try { e.preventDefault(); e.returnValue = ''; } catch (x) {} }
-            const hij = !!hijT && now - hijT < 1500 && !gHref;
-            if (!W.navigation && r.pop && (now - popSig < 1200 || gDepth > 0 || hij)) {
-                popSig = now;
+            if (locked()) { try { e.preventDefault(); e.returnValue = ''; } catch (x) {} }
+            const hij = !!hijT && Date.now() - hijT < 1500 && !gHref;
+            if (!W.navigation && r.pop && (Date.now() - popSig < 1200 || gDepth > 0 || hij)) {
+                popSig = Date.now();
                 [0, 10, 30, 60, 100, 150, 250, 400, 600, 1000, 1500].forEach(ms => W.setTimeout(() => { try { W.stop(); } catch (x) {} }, ms));
             }
         });
@@ -1723,10 +1718,10 @@
         if (!t) { invStrike.delete(el); return 'no'; }
         if (isPlayerish(t)) { invStrike.delete(el); return 'no'; }
         const fr = el.tagName === 'IFRAME';
-        if (!now || fr) {
+        if (!now) {
             const n = (invStrike.get(el) || 0) + 1;
             invStrike.set(el, n);
-            if (n < (fr ? (now ? 1 : 3) : 2)) return 'wait';
+            if (n < (fr ? 3 : 2)) return 'wait';
         }
         kill(t, true);
         t.setAttribute(INV_ATTR, '');
@@ -1752,12 +1747,6 @@
                 if (c >= 3) invQ.delete(el);
             }
         }
-    };
-    let invRaf = false;
-    const invSoon = () => {
-        if (invRaf) return;
-        invRaf = true;
-        requestAnimationFrame(() => { invRaf = false; invScan(); });
     };
     const invClear = () => document.querySelectorAll(`[${INV_ATTR}]`).forEach(e => e.removeAttribute(INV_ATTR));
 
@@ -1935,7 +1924,7 @@
     };
     function scanGuard() {
         if (!set.on || !set.pop || !guardOn() || !document.documentElement) return;
-        budget = 400;
+        budget = 200;
         purgePop(document.documentElement);
         document.querySelectorAll(SUSPECT).forEach(el => { if (!inHostNode(el)) vetSoon(el); });
         if (document.body) [...document.body.children].forEach(vetSoon);
@@ -2056,7 +2045,6 @@
             return;
         }
         const stale = new Set(document.querySelectorAll(`[${ATTR}]`));
-        purgePop(document.documentElement);
         purgeSel(document.documentElement);
         purgeAdSrc(document.documentElement);
         purgeMeta(document.documentElement);
@@ -2105,13 +2093,13 @@
     const mo = new MutationObserver(muts => {
         ensureStyles();
         if (!set.on) return;
-        budget = 200;
+        budget = 150;
         for (const m of muts) {
             if (m.type === 'childList') {
                 m.addedNodes.forEach(n => {
                     if (n.nodeType === 1 && n.id === 'gdar-host') return;
                     if (n.nodeType === 1) {
-                        purgePop(n); purgeSel(n); purgeAdSrc(n); purgeMeta(n);
+                        purgeSel(n); purgePop(n); purgeAdSrc(n); purgeMeta(n);
                         if (!n.isConnected) return;
                         neutralizeIn(n);
                         collectInv(n);
@@ -2120,7 +2108,6 @@
                     }
                     scan(n);
                 });
-                if (invQ.size) invSoon();
             } else if (m.type === 'characterData') {
                 checkText(m.target);
             } else if (m.type === 'attributes') {
@@ -2153,7 +2140,7 @@
     document.addEventListener('readystatechange', guardKick);
     every(INV_SCAN_MS, invScan);
     every(700, () => { ensureStyles(); attachMo(); });
-    every(1500, () => wallScan(null));
+    every(800, () => wallScan(null));
     document.addEventListener('DOMContentLoaded', () => { ensureStyles(); sweep(); invScan(); scanGuard(); }, { once: true });
     window.addEventListener('load', () => { sweep(); setTimeout(sweep, 1000); setTimeout(sweep, 3000); }, { once: true });
     window.addEventListener('pageshow', e => { if (e.persisted) { ensureStyles(); sweep(); } });
@@ -2575,7 +2562,9 @@
             up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
             layers: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
             chev: '<path d="M9 6l6 6-6 6"/>',
-            shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>'
+            reload: '<path d="M20 11a8 8 0 1 0-.9 4.3"/><path d="M20 4v7h-7"/>',
+            shield: '<path d="M12 3l8 3v6c0 5-3.4 8.2-8 9-4.6-.8-8-4-8-9V6l8-3z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
+            bookmark: '<path d="M6 4h12v17l-6-4-6 4z"/>'
         };
         const ic = (n, s = 16) =>
             `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;flex:none">${ICONS[n]}</svg>`;
@@ -2689,7 +2678,7 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
         const ROWS_A = [
             ['g-on', 'on', 'Chặn quảng cáo', 'Xoá quảng cáo, tắt tiếng, chặn link ẩn'],
             ['g-auto', 'auto', 'Tự động chặn', 'Ẩn ads, popup, banner, float'],
-            ['g-pop', 'pop', 'Popup, tab lạ &amp; khung chứa', 'Chặn lớp phủ, tab tự mở, ẩn cả khung và nút ✕'],
+            ['g-pop', 'pop', 'Popup, tab lạ &amp; khung chứa', 'Chặn lớp phủ, tab tự mở, ẩn cả khung &amp; nút ✕'],
             ['g-links', 'links', 'Chặn chuyển hướng ngoài', '', 'g-lnk-s']
         ];
         const ROW_PICK = ['g-pick', 'pick', 'Nhấn giữ xem phần tử',
@@ -2810,20 +2799,42 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 syncBusy();
             };
 
+            const morphIn = () => {
+                const g = geom();
+                moving(true);
+                const a1 = sh.animate([
+                    { transform: dropTf(g) },
+                    { transform: 'translate3d(0,0,0) scale(1,1)' }
+                ], { duration: 620, easing: EASE_OPEN });
+                const a2 = sh.animate([{ borderRadius: g.r }, { borderRadius: RAD + 'px' }], { duration: 520, easing: 'cubic-bezier(.3,.7,.25,1)' });
+                kids = [a2];
+                [...sc.children].forEach((c, i) => {
+                    if (c.animate) kids.push(c.animate([{ opacity: 0 }, { opacity: 1 }],
+                        { duration: 260, delay: 190 + Math.min(i, 12) * 12, easing: 'ease-out', fill: 'backwards' }));
+                });
+                anim = a1;
+                a1.onfinish = () => { if (anim !== a1) return; killAnims(); moving(false); };
+            };
             const open = () => {
                 stop(); closing = false; tr = null;
                 toTop(el);
                 M = metrics();
                 setP(0);
                 el.classList.remove('full');
-                Sx = Sy = 1; RR = ''; CO = 1; LF = 1; X = 0; B = 0;
-                Y = (sh.offsetHeight || H || 400) + 24;
+                const morph = o.dot && !reduced();
+                Sx = Sy = 1; RR = ''; CO = 1; LF = 1; X = 0; Y = 0; B = 0;
+                if (!morph) { Sx = Sy = .94; Y = 44; CO = 0; LF = 0; }
                 bd.style.transition = 'none';
                 paint();
                 el.classList.add('show');
                 syncBusy();
                 void sh.offsetWidth;
-                go({ Sx: 1, Sy: 1, X: 0, Y: 0, B: o.bd0, CO: 1, LF: 1 }, 560, EASE_OPEN);
+                if (morph) {
+                    B = o.bd0;
+                    bd.style.transition = 'opacity 420ms ease';
+                    bd.style.opacity = B;
+                    morphIn();
+                } else go({ Sx: 1, Sy: 1, Y: 0, B: o.bd0, CO: 1, LF: 1 }, 420, EASE_OPEN);
             };
             const close = () => {
                 if (closing) return;
@@ -2831,7 +2842,7 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
                 if (o.before) o.before();
                 el.classList.remove('full');
                 if (!(o.dot && !reduced())) {
-                    go({ Sx: 1, Sy: 1, Y: (sh.offsetHeight || 400) + 24, B: 0, CO: 1, LF: 1 }, 320, EASE_CLOSE, fin);
+                    go({ Sx: .94, Sy: .94, Y: Y + 60, B: 0, CO: 0, LF: 0 }, 280, EASE_CLOSE, fin);
                     return;
                 }
                 const cT = tf(), cR = RR || RAD + 'px', lv = lay();
@@ -3348,8 +3359,6 @@ to{opacity:1;transform:scale(1)}}
             };
             bind($('g-io'), 'input', () => ioMsg(''));
 
-            let soonT = 0;
-            const applySoon = () => { calcKeys(); clearTimeout(soonT); soonT = setTimeout(applyRules, 30); };
             bind($('g-add'), 'click', add);
             bind($('g-in'), 'keydown', e => { if (e.key === 'Enter') add(); });
             bind($('g-in'), 'input', (e, tg) => { tg.style.borderColor = ''; });
@@ -3357,10 +3366,10 @@ to{opacity:1;transform:scale(1)}}
             bind($('g-bulk'), 'input', () => msg(''));
 
             const AFTER = {
-                on: () => { render(); applySoon(); },
-                auto: applySoon,
-                pop: () => { learn.l = []; learnWrite(); applySoon(); render(); },
-                links: () => { applySoon(); render(); },
+                on: () => { render(); applyRules(); },
+                auto: applyRules,
+                pop: () => { learn.l = []; learnWrite(); applyRules(); render(); },
+                links: () => { applyRules(); render(); },
                 pick: applyPick,
                 rnd: applyColor
             };
@@ -3630,78 +3639,160 @@ to{opacity:1;transform:scale(1)}}
             const PINK = '#ff2d95';
             const RM = tryQ(() => matchMedia('(prefers-reduced-motion: reduce)').matches, false);
             const wait = ms => new Promise(r => setTimeout(r, ms));
-            const STEP = 46, DUR = 700, PAGE_MS = 6200;
+            const STEP = 46, DUR = 700, PAGE_MS = 8000;
 
-            const phone = inner => `<div class="ob-ph">${inner}</div>`;
-            const sk = (t, w) => `<i class="ob-sk" style="top:${t}px;width:${w}px"></i>`;
-            const adb = (cls, t, h, title, sub) => `<div class="ob-ad ${cls}" style="top:${t}px;height:${h}px"><em>AD</em>${title}<small>${sub}</small></div>`;
-            const hero = (t, h) => `<div class="ob-hero" style="left:12px;top:${t}px;width:196px;height:${h}px"></div>`;
-            const dotAt = (cls, extra) => `<i class="ob-d ${cls}" style="left:20px;top:362px"></i>`;
-            const tapAt = (cls, x, y) => `<i class="ob-tap ${cls}" style="left:${x}px;top:${y}px"></i>`;
-            const CARDS = [['Popup, tab &amp; khung chứa', 'Lớp phủ, tab tự mở, nút ✕'], ['Chuyển hướng lạ', 'tinyurl, bet, tiktok://…'], ['Khung quảng cáo', 'Ẩn ngay lần tải sau']];
-            const SHIELD = '<svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS.shield + '</svg>';
+            /* ---------- Minh hoạ mới: mô phỏng điện thoại + trang web giả ---------- */
+            const V = 'opacity:1;transform:none', X = tf => 'opacity:0;transform:' + tf;
+            const KF = (n, st) => `@keyframes ${n}{${st.map(s => s[0] + '%{' + s[1] + '}').join('')}}`;
+            const gone = (n, v1, v2, r1, r2, tf) => KF(n, [[0, V], [v1, V], [v2, X(tf)], [r1, X(tf)], [r2, V], [100, V]]);
+            const show = (n, a1, a2, b1, b2, tf) => KF(n, [[0, X(tf)], [a1, X(tf)], [a2, V], [b1, V], [b2, X(tf)], [100, X(tf)]]);
+            const op = (n, pts) => KF(n, pts.map(p => [p[0], 'opacity:' + p[1]]));
+            const TH = 'opacity:0;transform:scale(1.8)';
+            const tapKF = (n, list) => KF(n, [[0, TH]].concat(...list.map(t => [
+                [t[0], TH], [t[1], 'opacity:.9;transform:scale(1)'], [t[2], 'opacity:0;transform:scale(.7)']
+            ]), [[100, TH]]));
+            const WA = 'opacity:0;transform:scale(.05)', WB = 'opacity:0;transform:scale(7)';
+
+            const swK = [], swN = [];
+            const swT = [52, 58, 64, 70];
+            swT.forEach((t, i) => {
+                swK.push(KF('s3k' + i, [[0, 'background:#4a4954'], [t, 'background:#4a4954'], [t + 3, 'background:var(--ne)'], [100, 'background:var(--ne)']]));
+                swK.push(KF('s3n' + i, [[0, 'transform:translateX(0)'], [t, 'transform:translateX(0)'], [t + 3, 'transform:translateX(11px)'], [100, 'transform:translateX(11px)']]));
+                swN.push('s3k' + i, 's3n' + i);
+            });
+
+            const SCENE_KF = [
+                // 1: quét sạch
+                gone('s1d', 24, 30, 92, 98, 'translateY(30px)'),
+                gone('s1c', 29, 35, 92, 98, 'scale(.6)'),
+                gone('s1a', 31, 37, 92, 98, 'scale(.92)'),
+                gone('s1p', 35, 42, 92, 98, 'scale(.8)'),
+                gone('s1m', 35, 42, 92, 98, 'none'),
+                show('s1b', 46, 52, 86, 92, 'translateY(8px) scale(.9)'),
+                show('s1k', 48, 54, 84, 90, 'none'),
+                KF('s1w', [[0, WA], [18, WA], [20, 'opacity:.9;transform:scale(.05)'], [46, WB], [100, WB]]),
+                // 2: chạm bật/tắt
+                op('s2g', [[0, 1], [19, 1], [21, 0], [50, 0], [52, 1], [100, 1]]),
+                op('s2x', [[0, 0], [19, 0], [21, 1], [50, 1], [52, 0], [100, 0]]),
+                show('s2a', 21, 27, 52, 58, 'translateY(-6px) scale(.94)'),
+                show('s2f', 23, 29, 53, 59, 'scale(.6)'),
+                tapKF('s2t', [[15, 18, 22], [46, 49, 53]]),
+                show('s2n1', 14, 18, 32, 36, 'translateY(6px)'),
+                show('s2n2', 44, 48, 64, 68, 'translateY(6px)'),
+                // 3: giữ chấm mở bảng
+                op('s3g', [[0, 1], [9, 1], [11, 0], [88, 0], [92, 1], [100, 1]]),
+                KF('s3r', [[0, 'opacity:0;transform:scale(1)'], [10, 'opacity:0;transform:scale(1)'], [13, 'opacity:1;transform:scale(1.7)'], [32, 'opacity:1;transform:scale(1.7)'], [34, 'opacity:0;transform:scale(2.4)'], [100, 'opacity:0;transform:scale(1)']]),
+                op('s3rg', [[0, 0], [7, 0], [9, 1], [31, 1], [34, 0], [100, 0]]),
+                KF('s3f', [[0, 'stroke-dashoffset:138.2;stroke:var(--ne)'], [8, 'stroke-dashoffset:138.2;stroke:var(--ne)'], [28, 'stroke-dashoffset:0;stroke:#ff404d'], [100, 'stroke-dashoffset:0;stroke:#ff404d']]),
+                KF('s3t', [[0, TH], [7, TH], [10, 'opacity:.9;transform:scale(1)'], [31, 'opacity:.9;transform:scale(.92)'], [35, 'opacity:0;transform:scale(1.4)'], [100, TH]]),
+                show('s3l', 8, 11, 30, 34, 'translateY(6px)'),
+                show('s3d', 34, 40, 84, 90, 'none'),
+                KF('s3s', [[0, WA], [34, WA], [36, 'opacity:1;transform:scale(.06)'], [44, 'opacity:1;transform:scale(1.02)'], [47, 'opacity:1;transform:scale(1)'], [84, 'opacity:1;transform:scale(1)'], [90, WA], [100, WA]]),
+                ...swK,
+                // 4: nhấn giữ phần tử
+                gone('s4a', 64, 70, 94, 99, 'scale(.9)'),
+                show('s4h', 24, 28, 60, 64, 'none'),
+                KF('s4t1', [[0, TH], [8, TH], [11, 'opacity:.9;transform:scale(1)'], [22, 'opacity:.9;transform:scale(.92)'], [26, 'opacity:0;transform:scale(1.4)'], [100, TH]]),
+                op('s4rg', [[0, 0], [8, 0], [10, 1], [22, 1], [24, 0], [100, 0]]),
+                KF('s4f', [[0, 'stroke-dashoffset:138.2'], [10, 'stroke-dashoffset:138.2'], [22, 'stroke-dashoffset:0'], [100, 'stroke-dashoffset:0']]),
+                show('s4c', 8, 11, 22, 26, 'translateY(6px)'),
+                KF('s4s', [[0, X('translateY(40px) scale(.96)')], [26, X('translateY(40px) scale(.96)')], [34, V], [58, V], [66, X('translateY(40px) scale(.96)')], [100, X('translateY(40px) scale(.96)')]]),
+                tapKF('s4t2', [[50, 54, 59]]),
+                KF('s4k', [[0, 'transform:none'], [53, 'transform:none'], [55, 'transform:scale(.92)'], [58, 'transform:none'], [100, 'transform:none']]),
+                show('s4b', 70, 74, 90, 94, 'translateY(8px)'),
+                // 5: ghi nhớ
+                KF('s5a', [[0, X('translateY(-10px) scale(.9)')], [6, X('translateY(-10px) scale(.9)')], [11, V], [16, V], [21, 'opacity:0;transform:scale(.8)'], [100, 'opacity:0;transform:scale(.8)']]),
+                show('s5k', 20, 24, 40, 44, 'translateY(6px) scale(.92)'),
+                show('s5m', 28, 32, 40, 44, 'translateY(6px) scale(.92)'),
+                op('s5c1', [[0, 1], [44, 1], [46, 0], [100, 0]]),
+                op('s5c2', [[0, 0], [46, 0], [48, 1], [96, 1], [98, 0], [100, 0]]),
+                op('s5r', [[0, 0], [44, 0], [47, 1], [56, 1], [59, 0], [100, 0]]),
+                KF('s5p', [[0, 'opacity:0;transform:scaleX(0)'], [44, 'opacity:0;transform:scaleX(0)'], [46, 'opacity:1;transform:scaleX(0)'], [56, 'opacity:1;transform:scaleX(1)'], [59, 'opacity:0;transform:scaleX(1)'], [100, 'opacity:0;transform:scaleX(0)']]),
+                show('s5g', 60, 66, 94, 98, 'scale(.96)')
+            ].join('');
+            const ANI_NAMES = ('s1d s1c s1a s1p s1m s1b s1k s1w s2g s2x s2a s2f s2t s2n1 s2n2 s3g s3r s3rg s3f s3t s3l s3d s3s ' +
+                'a4 s4a s4h s4t1 s4rg s4f s4c s4s s4t2 s4k s4b s5a s5k s5m s5c1 s5c2 s5r s5p s5g').split(' ').filter(n => n !== 'a4').concat(swN);
+            const ANI_CSS = ANI_NAMES.map(n => `.${n}{animation:${n} ${PAGE_MS / 1000}s ease-in-out infinite}`).join('') +
+                '.s3s{animation-timing-function:cubic-bezier(.22,1,.36,1)}.s1w{animation-timing-function:cubic-bezier(.3,.6,.4,1)}.s3f,.s4f{animation-timing-function:linear}';
+
+            const STAR = '<path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z"/>';
+            const ph = inner => '<div class="ph"><i class="ph-nt"></i><div class="ph-sc">' + inner + '</div></div>';
+            const L = (t, w) => `<i class="pg-l" style="top:${t}px;width:${w}px"></i>`;
+            const BASE_PG = '<i class="pg-av"></i><i class="pg-lg"></i><div class="pg-hero"></div>' +
+                [[134, 150], [148, 108], [170, 128], [184, 158], [198, 96], [222, 170], [236, 146], [250, 160], [264, 118], [278, 152], [292, 104]]
+                    .map(a => L(a[0], a[1])).join('');
+            const dotW = (cls, kind) => `<i class="pg-dw ${cls}"><i class="pg-dot${kind ? ' ' + kind : ''}"></i></i>`;
+            const AD_A = c => `<div class="pg-ad ${c}" style="left:14px;top:162px;width:182px;height:46px"><em>Quảng cáo</em><b>Giảm giá 90% hôm nay</b><small>Bấm để nhận ngay</small></div>`;
+            const AD_F = c => `<div class="pg-ad pg-fl ${c}" style="right:10px;top:232px;width:78px;height:54px"><em>QC</em><b>Tải app</b><small>Miễn phí</small></div>`;
+            const CK = c => `<div class="pg-ck ${c}"><span>Trang này dùng cookie</span><b>OK</b></div>`;
+            const POP = c => `<div class="pg-pop ${c}"><i class="pg-x">×</i><div class="pg-gf"></div><b>Nhận quà miễn phí!</b><span>Xem ngay</span></div>`;
+            const TAP = (c, x, y) => `<i class="pg-tp ${c}" style="left:${x}px;top:${y}px"></i>`;
+            const RINGSVG = (cls, fcls, x, y) => `<svg class="pg-rg ${cls}" viewBox="0 0 56 56" width="56" height="56" style="left:${x}px;top:${y}px" aria-hidden="true"><circle class="b" cx="28" cy="28" r="22"/><circle class="f ${fcls}" cx="28" cy="28" r="22"/></svg>`;
+            const SW_ROWS = ['Chặn quảng cáo', 'Tự động chặn', 'Popup &amp; khung chứa', 'Chặn chuyển hướng']
+                .map((x, i) => `<div class="pg-rw"><span>${x}</span><u class="s3k${i}"><b class="s3n${i}"></b></u></div>`).join('');
 
             const PAGES = [
                 {
                     t: 'Một dấu chấm, trang web sạch bóng',
                     s: 'Dot Ads lặng lẽ quét sạch banner, popup và tab lạ ngay khi trang vừa tải.',
-                    v: () => phone(
-                        sk(40, 90) +
-                        adb('p1a', 58, 46, 'Banner khuyến mãi', 'Giảm đến 90%') +
-                        sk(118, 170) + sk(132, 130) + sk(146, 150) +
-                        adb('p1b', 168, 64, 'Tải ứng dụng ngay', 'Nhận quà miễn phí') +
-                        sk(250, 160) + sk(264, 110) + sk(278, 140) +
-                        '<div class="ob-pop p1c"><i></i>Trúng thưởng!<small>Bấm để nhận ngay</small></div>' +
-                        '<i class="p1w"></i>' + dotAt('ob-dg p1d') +
-                        `<span class="ob-ck2 p1k" style="left:42px;top:350px">${ic('check', 12)}Đã chặn 3 quảng cáo</span>`)
+                    v: () => ph(BASE_PG + AD_A('s1a') + AD_F('s1c') + CK('s1d') +
+                        '<div class="pg-dim s1m"></div>' + POP('s1p') +
+                        '<i class="pg-wv s1w"></i>' + dotW('') +
+                        `<div class="pg-bdw s1b"><span class="pg-pill ok">${ic('check', 12)}Đã chặn 4 quảng cáo</span></div>` +
+                        '<div class="pg-ov s1k">' +
+                        [[170, 70, 0], [26, 104, .5], [176, 292, 1]].map(a => `<span class="pg-spk" style="left:${a[0]}px;top:${a[1]}px;animation-delay:${a[2]}s">${fic(STAR, 14)}</span>`).join('') +
+                        '</div>')
                 },
                 {
                     t: 'Chạm một cái, bật hay tắt',
                     s: 'Chạm chấm sáng để tạm dừng. Chạm thêm lần nữa là lá chắn quay lại.',
-                    v: () => phone(
-                        '<div class="ob-stw" style="left:0;top:34px;width:220px"><div class="ob-st on p2on"><i></i>Đang bật</div><div class="ob-st off p2off"><i></i>Đang tắt</div></div>' +
-                        sk(84, 100) + sk(100, 160) + sk(114, 120) +
-                        adb('p2a', 136, 70, 'Tải ứng dụng ngay', 'Nhận ưu đãi 90%') +
-                        `<span class="ob-ck2 p2k" style="left:36px;top:160px;width:148px;justify-content:center">${ic('check', 12)}Đã chặn 1 quảng cáo</span>` +
-                        sk(230, 170) + sk(244, 130) + sk(258, 150) +
-                        dotAt('ob-dg p2g') + dotAt('ob-dx p2x') + tapAt('p2t', 20, 362))
+                    v: () => ph(BASE_PG + AD_A('s2a') + AD_F('s2f') +
+                        '<span class="pg-st on fl s2g"><i></i>Đang bật</span><span class="pg-st off fl s2x"><i></i>Đang tắt</span>' +
+                        dotW('s2g') + dotW('s2x', 'gy') + TAP('s2t', 18, 358) +
+                        '<div class="pg-cpw s2n1"><span class="pg-pill">Chạm một lần: tạm tắt</span></div>' +
+                        '<div class="pg-cpw s2n2"><span class="pg-pill">Chạm lần nữa: bật lại</span></div>')
                 },
                 {
-                    t: 'Giữ chấm, mở trọn bảng điều khiển',
-                    s: 'Giữ đến khi chấm chuyển đỏ để thêm phần tử, từ khoá hay liên kết cần chặn.',
-                    v: () => phone(
-                        sk(40, 90) + hero(58, 64) + sk(138, 160) + sk(152, 110) + sk(166, 140) + sk(196, 150) + sk(210, 100) +
-                        '<div class="ob-sheet p3s"><b class="ob-gr"></b>' +
-                        '<div class="ob-shh"><span>D<i class="ob-od"></i>t Ads</span><div class="ob-st on" style="position:static;transform:none"><i></i>Đang bật</div></div>' +
-                        '<div class="ob-rws">' + ['Chặn quảng cáo', 'Tự động chặn', 'Popup, tab &amp; khung'].map(x => `<div class="ob-rw"><span>${x}</span><u></u></div>`).join('') + '</div>' +
-                        '<div class="ob-tb"><span class="a">Phần tử</span><span>Từ khoá</span><span>Liên kết</span></div>' +
-                        `<div class="ob-ip"><span>smartbanner hoặc .banner</span><b>${ic('plus', 12)}</b></div></div>` +
-                        '<span class="ob-ht p3h" style="left:40px;top:350px">Giữ 0,4s</span>' +
-                        '<svg class="p3-rg" viewBox="0 0 40 40" width="40" height="40" style="left:0;top:342px" aria-hidden="true"><circle class="b" cx="20" cy="20" r="16"/><circle class="f" cx="20" cy="20" r="16"/></svg>' +
-                        dotAt('ob-dg p3g') + dotAt('ob-dr p3r') + tapAt('p3t', 20, 362))
+                    t: 'Giữ chấm, mở bảng điều khiển',
+                    s: 'Giữ đến khi chấm chuyển đỏ để bật tắt tính năng, thêm phần tử, từ khoá hay liên kết cần chặn.',
+                    v: () => ph(BASE_PG + dotW('s3g') + '<i class="pg-dw s3r"><i class="pg-dot rd"></i></i>' +
+                        RINGSVG('s3rg', 's3f', -10, 330) + TAP('s3t', 18, 358) +
+                        '<div class="pg-cpw s3l" style="top:312px"><span class="pg-pill">Giữ 0,4s đến khi chấm đỏ</span></div>' +
+                        '<div class="pg-dim s3d" style="z-index:5"></div>' +
+                        '<div class="pg-sh s3s" style="left:8px;right:8px;top:104px;height:262px">' +
+                        '<i class="pg-gr"></i>' +
+                        '<div class="pg-sht"><span>D<i class="ob-od"></i>t Ads</span><span class="pg-st on"><i></i>Đang bật</span></div>' +
+                        '<div class="pg-rws">' + SW_ROWS + '</div>' +
+                        '<div class="pg-tb"><span class="a">Phần tử</span><span>Từ khoá</span><span>Liên kết</span></div>' +
+                        `<div class="pg-ip"><span>smartbanner hoặc .banner</span><b>${ic('plus', 12)}</b></div></div>`)
                 },
                 {
                     t: 'Thấy phiền là ẩn',
                     s: 'Nhấn giữ bất kỳ phần tử nào trên trang, xem chi tiết rồi ẩn nó ngay.',
-                    v: () => phone(
-                        sk(40, 80) + hero(56, 62) + sk(134, 150) + sk(148, 110) +
-                        adb('p4a', 170, 62, 'Nhận quà miễn phí', 'Bấm để xem ngay') +
-                        sk(250, 150) + sk(264, 100) +
-                        '<div class="ob-hl p4h" style="left:8px;top:166px;width:204px;height:70px"></div>' +
-                        '<span class="ob-lb p4h" style="left:8px;top:151px">div.banner</span>' +
-                        `<span class="ob-ck2 p4k" style="left:46px;top:188px">${ic('check', 12)}Đã ẩn phần tử</span>` +
-                        '<div class="ob-if p4i" style="left:10px;top:250px;width:200px"><code>&lt;div&gt; · .banner</code>' +
-                        `<div class="ob-rw2"><small>Selector</small><span>#app &gt; div.banner</span><b>${ic('copy', 10)}</b></div>` +
-                        '<div class="ob-ib"><span>Phần tử cha</span><b class="p4b">Ẩn phần tử này</b></div></div>' +
-                        tapAt('p4t1', 110, 201) + tapAt('p4t2', 156, 336))
+                    v: () => ph(BASE_PG + AD_A('s4a') + dotW('') +
+                        '<div class="pg-ov s4h"><i class="pg-hl" style="left:10px;top:158px;width:190px;height:54px"></i><span class="pg-lb" style="left:10px;top:142px">div.banner</span></div>' +
+                        '<div class="pg-cpw s4c" style="top:112px;left:0;right:0;text-align:center"><span class="pg-pill">Nhấn giữ phần tử</span></div>' +
+                        RINGSVG('s4rg', 's4f', 77, 157) + TAP('s4t1', 105, 185) +
+                        '<div class="pg-sh s4s" style="left:8px;right:8px;top:210px;height:156px;display:flex;flex-direction:column;transform-origin:50% 100%">' +
+                        '<i class="pg-gr"></i>' +
+                        '<div class="pg-sht"><span style="font-size:13px">Phần tử</span><small class="pg-tg">&lt;div&gt; · .banner</small></div>' +
+                        `<div class="pg-if"><small>Selector</small><span>#app &gt; div.banner</span><b>${ic('copy', 10)}</b></div>` +
+                        '<div class="pg-bt"><span>Phần tử cha</span><b class="s4k">Ẩn phần tử này</b></div></div>' +
+                        TAP('s4t2', 149, 338) +
+                        `<div class="pg-ts s4b"><span class="pg-pill ok">${ic('check', 12)}Đã ẩn phần tử</span></div>`)
                 },
                 {
                     t: 'Càng dùng, càng sạch',
-                    s: 'Dot Ads tự nhớ khung quảng cáo và chặn chuyển hướng lạ ngay từ lần tải sau.',
-                    v: () => '<svg class="p5-rg" viewBox="0 0 140 140" width="140" height="140" style="left:80px;top:16px" aria-hidden="true"><circle class="b" cx="70" cy="70" r="60"/><circle class="f" cx="70" cy="70" r="60"/></svg>' +
-                        `<div class="p5-ic" style="left:80px;top:16px">${SHIELD}</div>` +
-                        CARDS.map((c, i) =>
-                            `<div class="ob-cd2 p5r${i + 1}" style="top:${172 + i * 70}px"><span class="ob-ck">${ic('check', 18)}</span><div><b>${c[0]}</b><small>${c[1]}</small></div><em>Đã chặn</em></div>`).join('')
+                    s: 'Dot Ads tự nhớ khung quảng cáo và popup, lần tải sau chặn ngay từ đầu, không kịp hiện.',
+                    v: () => ph(BASE_PG + AD_A('s5a') +
+                        `<div class="pg-bdw s5k" style="left:0;right:0;top:174px;text-align:center"><span class="pg-pill ok">${ic('check', 12)}Đã chặn quảng cáo</span></div>` +
+                        `<div class="pg-bdw s5m" style="left:0;right:0;top:214px;text-align:center"><span class="pg-pill ok">${ic('bookmark', 12)}Đã nhớ cho lần sau</span></div>` +
+                        `<div class="pg-gh s5g">${ic('shield', 14)}<span>Chặn từ lúc tải, không hiện</span></div>` +
+                        dotW('') +
+                        '<div class="pg-tr s5c1"><span class="pg-pill">Lần đầu</span></div>' +
+                        '<div class="pg-tr s5c2"><span class="pg-pill ok">Tải lại</span></div>' +
+                        '<i class="pg-pr s5p"></i>' +
+                        `<div class="pg-rl s5r"><span class="pg-rlc">${ic('reload', 20)}</span></div>`)
                 }
             ];
 
@@ -3734,6 +3825,8 @@ to{opacity:1;transform:scale(1)}}
 .ob-stage{flex:1 1 0;min-height:0;position:relative}
 .ob-v{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;will-change:transform,opacity;-webkit-backface-visibility:hidden;backface-visibility:hidden}
 .ob-fr{position:relative;flex:none;width:300px;height:400px;transform:scale(var(--k,1))}
+.ob-fr::before{content:"";position:absolute;left:14px;right:14px;top:40px;bottom:-14px;border-radius:50%;pointer-events:none;
+    background:radial-gradient(closest-side,rgba(var(--nr),.3),transparent 74%);filter:blur(8px)}
 .ob-txt{padding:0 26px;text-align:center;min-height:120px}
 .ob-t{font-size:22px;font-weight:700;line-height:1.22;letter-spacing:-.01em;max-width:340px;margin:0 auto}
 .ob-s{font-size:15px;font-weight:500;line-height:1.42;max-width:330px;margin:8px auto 0}
@@ -3746,176 +3839,106 @@ to{opacity:1;transform:scale(1)}}
 .ob-btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;height:48px;margin:0 20px;
     border-radius:999px;font-size:16px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.3);background:rgba(255,255,255,.07);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);will-change:transform;
-    pointer-events:none;transition:background .5s ease,color .5s ease,box-shadow .5s ease;width:calc(100% - 70%);margin:0 auto}
+    pointer-events:none;transition:background .5s ease,color .5s ease,box-shadow .5s ease}
 .ob-btn.on{color:#15111a;background:linear-gradient(180deg,#fbf8f2,#e9e3d8);
     box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(255,255,255,.22),0 12px 32px -8px rgba(var(--nr),.5);pointer-events:auto}
 .ob-btn.on:active{background:#ddd6c9}
 .ob-bl{position:relative;z-index:1}
 .ob-rp{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(20,16,26,.28),rgba(20,16,26,0) 66%);transform:scale(0);opacity:0;will-change:transform,opacity}
 .ob-ft{margin-top:10px;text-align:center;font-size:10.5px;color:rgba(255,255,255,.3)}
-
-.ob-ph{position:absolute;left:40px;top:4px;width:220px;height:392px;border-radius:34px;overflow:hidden;
-    background:linear-gradient(170deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 60%);
-    border:1px solid rgba(255,255,255,.16);
-    box-shadow:0 34px 60px -14px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.2)}
-.ob-ph::before{content:"";position:absolute;left:50%;top:9px;width:62px;height:16px;margin-left:-31px;border-radius:9px;background:rgba(0,0,0,.5)}
-.ob-ph::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(125deg,rgba(255,255,255,.09),transparent 36%)}
-.ob-sk{position:absolute;left:16px;height:7px;border-radius:4px;background:rgba(255,255,255,.13)}
-.ob-hero{position:absolute;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.12);
-    background:linear-gradient(135deg,rgba(var(--nr),.34),rgba(255,255,255,.05) 72%)}
-.ob-hero::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 10px,rgba(255,255,255,.05) 10px 11px)}
-.ob-hero::after{content:"";position:absolute;right:14px;top:12px;width:14px;height:14px;border-radius:50%;
-    background:rgba(255,255,255,.85);box-shadow:0 0 16px 3px rgba(255,255,255,.35)}
-.ob-ad{position:absolute;left:12px;right:12px;display:flex;flex-direction:column;justify-content:center;padding:0 14px;border-radius:14px;overflow:hidden;
-    background:repeating-linear-gradient(135deg,rgba(255,110,150,.2) 0 8px,rgba(255,110,150,.08) 8px 16px);
-    border:1px dashed rgba(255,150,172,.55);font-size:12px;font-weight:700;will-change:transform,opacity,filter}
-.ob-ad small{font-size:9.5px;font-weight:600;opacity:.7;margin-top:2px}
-.ob-ad em{position:absolute;top:6px;right:8px;font-style:normal;font-size:8px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,.4)}
-.ob-pop{position:absolute;left:30px;top:122px;width:160px;height:116px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:3px;text-align:center;border-radius:20px;color:#fff;font-size:14px;font-weight:800;
-    background:linear-gradient(180deg,#ff7aa0,#e2486f);box-shadow:0 18px 40px rgba(0,0,0,.55);will-change:transform,opacity,filter}
-.ob-pop small{font-size:10px;font-weight:600;opacity:.85}
-.ob-pop i{position:absolute;top:8px;right:8px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.28)}
-.ob-d{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;will-change:transform,opacity}
-.ob-dg{background:var(--ne);box-shadow:0 0 10px 3px rgba(var(--nr),.9)}
-.ob-dx{background:rgba(139,139,147,.75)}
-.ob-dr{background:linear-gradient(180deg,#F20021,#FF404D);box-shadow:0 0 14px #F8132C}
-.ob-tap{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;opacity:0;pointer-events:none;
-    background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.55);will-change:transform,opacity}
-.ob-stw{position:absolute;height:26px}
-.ob-st{position:absolute;top:0;left:50%;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
-    border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
-.ob-st i{display:block;width:6px;height:6px;border-radius:50%;background:currentColor}
-.ob-st.on{background:rgba(var(--nr),.14);color:var(--ne)}
-.ob-st.off{background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)}
 .ob-od{display:inline-block;width:.34em;height:.34em;margin:0 .08em 0 .06em;border-radius:50%;vertical-align:.1em;
     background:var(--ne);box-shadow:0 0 6px 1px rgba(var(--nr),.85)}
-.ob-ck2{position:absolute;display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap;
-    color:var(--ne);background:rgba(var(--nr),.12);border:1px solid rgba(var(--nr),.35);box-shadow:0 0 18px rgba(var(--nr),.18);will-change:transform,opacity}
 
-/* trang 1 · sóng quét từ dấu chấm */
-.p1a{animation:obZap 7s ease-in-out .3s infinite backwards}
-.p1b{animation:obZap 7s ease-in-out 0s infinite backwards}
-.p1c{animation:obZap 7s ease-in-out .12s infinite backwards}
-@keyframes obZap{
-    0%,33%{opacity:1;transform:none;filter:none;box-shadow:none}
-    37%{opacity:1;transform:scale(1.03);filter:none;box-shadow:0 0 0 2px var(--ne),0 0 22px rgba(var(--nr),.7)}
-    45%{opacity:0;transform:scale(.6);filter:blur(8px);box-shadow:0 0 0 2px var(--ne)}
-    88%{opacity:0;transform:scale(.6);filter:blur(8px)}
-    96%,100%{opacity:1;transform:none;filter:none;box-shadow:none}}
-.p1w{position:absolute;left:20px;top:362px;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;pointer-events:none;
-    background:radial-gradient(circle,transparent 56%,rgba(var(--nr),.65) 68%,transparent 74%);will-change:transform,opacity;
-    animation:obWv 7s linear infinite}
-@keyframes obWv{0%,10%{opacity:0;transform:scale(1)}13%{opacity:1}46%{opacity:0;transform:scale(66)}100%{opacity:0;transform:scale(66)}}
-.p1d{animation:obPl 1.6s ease-in-out infinite}
-@keyframes obPl{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
-.p1k{animation:obCh 7s ease-in-out infinite}
-@keyframes obCh{0%,44%{opacity:0;transform:translateY(8px) scale(.94)}52%,88%{opacity:1;transform:none}95%,100%{opacity:0;transform:translateY(8px) scale(.94)}}
-
-/* trang 2 · chạm bật / tắt */
-.p2a{animation:obP2a 6s ease-in-out infinite}
-.p2k{animation:obP2k 6s ease-in-out infinite}
-.p2g,.p2on{animation:obP2g 6s ease-in-out infinite}
-.p2x,.p2off{animation:obP2x 6s ease-in-out infinite}
-.p2t{animation:obP2t 6s ease-in-out infinite}
-@keyframes obP2a{0%,30%{opacity:0;transform:scale(.94)}38%,62%{opacity:1;transform:none}68%,100%{opacity:0;transform:scale(.94)}}
-@keyframes obP2k{0%,28%{opacity:1;transform:none}34%,62%{opacity:0;transform:translateY(6px)}70%,100%{opacity:1;transform:none}}
-@keyframes obP2g{0%,30%{opacity:1}34%,64%{opacity:0}68%,100%{opacity:1}}
-@keyframes obP2x{0%,30%{opacity:0}34%,64%{opacity:1}68%,100%{opacity:0}}
-@keyframes obP2t{0%,24%{opacity:0;transform:scale(1.8)}28%{opacity:.9;transform:scale(1)}34%{opacity:0;transform:scale(.8)}35%,58%{opacity:0;transform:scale(1.8)}62%{opacity:.9;transform:scale(1)}68%,100%{opacity:0;transform:scale(.8)}}
-
-/* trang 3 · giữ chấm, bảng trượt lên, thu về chấm */
-.ob-sheet{position:absolute;left:10px;top:150px;width:200px;height:232px;padding:8px 12px 12px;border-radius:24px;
-    background:linear-gradient(180deg,rgba(52,50,62,.97),rgba(30,29,36,.98));border:1px solid rgba(255,255,255,.15);
-    box-shadow:0 20px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.18);transform-origin:10px 214px;will-change:transform,opacity}
-.ob-gr{display:block;width:30px;height:4px;margin:0 auto 10px;border-radius:2px;background:rgba(255,255,255,.26)}
-.ob-shh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:15px;font-weight:700}
-.ob-rws{border-radius:14px;overflow:hidden;background:rgba(255,255,255,.07)}
-.ob-rw{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 12px;font-size:11.5px}
-.ob-rw + .ob-rw{border-top:1px solid rgba(255,255,255,.06)}
-.ob-rw u{position:relative;width:26px;height:15px;border-radius:8px;background:var(--ne);box-shadow:0 0 8px rgba(var(--nr),.55)}
-.ob-rw u::after{content:"";position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:50%;background:#fff}
-.ob-tb{display:flex;gap:2px;padding:2px;margin-top:10px;border-radius:10px;background:rgba(255,255,255,.07)}
-.ob-tb span{flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:10px;font-weight:500;color:rgba(255,255,255,.55)}
-.ob-tb span.a{background:rgba(255,255,255,.14);color:#fff}
-.ob-ip{display:flex;align-items:center;gap:6px;margin-top:8px}
-.ob-ip span{flex:1;height:28px;line-height:28px;padding:0 9px;border-radius:9px;font-size:9.5px;color:rgba(255,255,255,.3);background:rgba(255,255,255,.08);white-space:nowrap;overflow:hidden}
-.ob-ip b{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:var(--ne);color:var(--ink)}
-.ob-ht{position:absolute;padding:3px 10px;border-radius:999px;font-size:10.5px;font-weight:600;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);white-space:nowrap}
-.p3-rg{position:absolute;transform:rotate(-90deg);overflow:visible}
-.p3-rg .b{fill:none;stroke:rgba(255,255,255,.12);stroke-width:2}
-.p3-rg .f{fill:none;stroke:var(--ne);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:100.5;stroke-dashoffset:100.5;animation:obRn3 6.4s ease-in-out infinite}
-.p3g{animation:obP3g 6.4s ease-in-out infinite}
-.p3r{opacity:0;animation:obP3r 6.4s ease-in-out infinite}
-.p3t{animation:obP3t 6.4s ease-in-out infinite}
-.p3h{animation:obP3h 6.4s ease-in-out infinite}
-.p3s{animation:obP3s 6.4s infinite}
-@keyframes obRn3{0%,6%{stroke-dashoffset:100.5;stroke:var(--ne);opacity:1}26%{stroke-dashoffset:0;stroke:#ff404d;opacity:1}34%,100%{stroke-dashoffset:0;stroke:#ff404d;opacity:0}}
-@keyframes obP3g{0%,22%{opacity:1}26%,84%{opacity:0}88%,100%{opacity:1}}
-@keyframes obP3r{0%,22%{opacity:0;transform:scale(1)}27%,82%{opacity:1;transform:scale(1.5)}88%,100%{opacity:0;transform:scale(1)}}
-@keyframes obP3t{0%,3%{opacity:0;transform:scale(1.8)}6%{opacity:.9;transform:scale(1)}28%{opacity:.9;transform:scale(.92)}34%,100%{opacity:0;transform:scale(1.5)}}
-@keyframes obP3h{0%,3%{opacity:0;transform:translateX(-6px)}8%,24%{opacity:1;transform:none}30%,100%{opacity:0}}
-@keyframes obP3s{
-    0%{opacity:0;transform:translate3d(0,120%,0)}
-    1%,28%{opacity:1;transform:translate3d(0,120%,0);animation-timing-function:cubic-bezier(.16,1,.3,1)}
-    42%,82%{opacity:1;transform:translate3d(0,0,0);animation-timing-function:cubic-bezier(.5,0,.2,1)}
-    92%,100%{opacity:0;transform:translate3d(0,0,0) scale(.03)}}
-
-/* trang 4 · soi phần tử rồi ẩn */
-.ob-hl{position:absolute;border:1.5px solid var(--ne);border-radius:14px;background:rgba(var(--nr),.1);
-    box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 22px rgba(var(--nr),.4)}
-.ob-lb{position:absolute;padding:2px 8px;border-radius:7px 7px 0 0;font-size:9px;font-weight:700;color:var(--ink);background:var(--ne)}
-.ob-if{position:absolute;padding:10px;border-radius:18px;
-    background:linear-gradient(180deg,rgba(46,44,54,.97),rgba(28,27,34,.98));border:1px solid rgba(255,255,255,.14);
-    box-shadow:0 16px 34px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.16)}
-.ob-if code{display:block;height:16px;font:600 11px/16px var(--ff);color:rgba(255,255,255,.75)}
-.ob-rw2{display:flex;align-items:center;gap:6px;margin-top:8px;height:26px;padding:0 4px 0 8px;border-radius:9px;background:rgba(255,255,255,.07)}
-.ob-rw2 small{flex:none;font-size:8.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.4)}
-.ob-rw2 span{flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.85)}
-.ob-rw2 b{flex:none;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:6px;background:rgba(255,255,255,.14)}
-.ob-ib{display:flex;gap:6px;margin-top:10px}
-.ob-ib span,.ob-ib b{flex:1;display:flex;align-items:center;justify-content:center;height:30px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(255,255,255,.12);white-space:nowrap}
-.ob-ib b{background:var(--ne);color:var(--ink)}
-.p4a{animation:obP4a 7s ease-in-out infinite}
-.p4h{animation:obP4h 7s ease-in-out infinite}
-.p4i{animation:obP4i 7s ease-in-out infinite;will-change:transform}
-.p4t1{animation:obP4t1 7s ease-in-out infinite}
-.p4t2{animation:obP4t2 7s ease-in-out infinite}
-.p4b{animation:obP4b 7s ease-in-out infinite}
-.p4k{animation:obP4k 7s ease-in-out infinite}
-@keyframes obP4a{0%,56%{opacity:1;transform:none;filter:none}64%,90%{opacity:0;transform:scale(.7);filter:blur(8px)}97%,100%{opacity:1;transform:none;filter:none}}
-@keyframes obP4h{0%,16%{opacity:0;transform:scale(1.06)}24%,56%{opacity:1;transform:scale(1)}62%,100%{opacity:0;transform:scale(1)}}
-@keyframes obP4i{0%,26%{transform:translate3d(0,125%,0);animation-timing-function:cubic-bezier(.16,1,.3,1)}38%,54%{transform:none;animation-timing-function:cubic-bezier(.5,0,.2,1)}66%,100%{transform:translate3d(0,125%,0)}}
-@keyframes obP4t1{0%,6%{opacity:0;transform:scale(1.8)}10%{opacity:.9;transform:scale(1)}24%{opacity:.9;transform:scale(.92)}29%,100%{opacity:0;transform:scale(1.4)}}
-@keyframes obP4t2{0%,44%{opacity:0;transform:scale(1.8)}48%{opacity:.9;transform:scale(1)}53%{opacity:.9;transform:scale(.9)}57%,100%{opacity:0;transform:scale(.8)}}
-@keyframes obP4b{0%,49%{transform:none}52%{transform:scale(.92)}56%,100%{transform:none}}
-@keyframes obP4k{0%,64%{opacity:0;transform:translateY(8px) scale(.94)}70%,90%{opacity:1;transform:none}96%,100%{opacity:0;transform:translateY(8px) scale(.94)}}
-
-/* trang 5 · càng dùng càng sạch */
-.p5-rg{position:absolute;transform:rotate(-90deg);overflow:visible}
-.p5-rg .b{fill:none;stroke:rgba(255,255,255,.1);stroke-width:8}
-.p5-rg .f{fill:none;stroke:var(--ne);stroke-width:8;stroke-linecap:round;stroke-dasharray:377;stroke-dashoffset:377;
-    filter:drop-shadow(0 0 8px rgba(var(--nr),.7));animation:obP5f 6.8s ease-in-out infinite}
-.p5-ic{position:absolute;width:140px;height:140px;display:flex;align-items:center;justify-content:center;color:var(--ne);
-    filter:drop-shadow(0 0 10px rgba(var(--nr),.6));animation:obP5i 2.4s ease-in-out infinite;will-change:transform}
-@keyframes obP5f{0%,8%{stroke-dashoffset:377;opacity:1}16%,34%{stroke-dashoffset:251;opacity:1}42%,56%{stroke-dashoffset:126;opacity:1}64%,86%{stroke-dashoffset:0;opacity:1}94%,100%{stroke-dashoffset:0;opacity:0}}
-@keyframes obP5i{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
-.ob-cd2{position:absolute;left:14px;width:272px;height:58px;padding:0 14px;display:flex;align-items:center;gap:12px;border-radius:20px;overflow:hidden;
-    background:linear-gradient(135deg,rgba(255,255,255,.11),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.14);
-    box-shadow:0 14px 30px -10px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.18);will-change:transform,opacity}
-.ob-cd2 > div{flex:1;min-width:0}
-.ob-cd2 b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ob-cd2 small{display:block;margin-top:2px;font-size:10.5px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ob-ck{position:relative;flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;
-    background:rgba(var(--nr),.14);border:1px solid rgba(var(--nr),.35);color:var(--ne)}
-.ob-cd2 em{flex:none;font-style:normal;font-size:10px;font-weight:600;padding:4px 9px;border-radius:999px;
-    background:rgba(var(--nr),.12);color:var(--ne);border:1px solid rgba(var(--nr),.28)}
-.p5r1{animation:obR1 6.8s ease-in-out infinite}
-.p5r2{animation:obR2 6.8s ease-in-out infinite}
-.p5r3{animation:obR3 6.8s ease-in-out infinite}
-@keyframes obR1{0%,4%{opacity:0;transform:translate3d(0,26px,0) scale(.94)}12%,86%{opacity:1;transform:none}94%,100%{opacity:0;transform:translate3d(0,-10px,0) scale(.97)}}
-@keyframes obR2{0%,24%{opacity:0;transform:translate3d(0,26px,0) scale(.94)}32%,86%{opacity:1;transform:none}94%,100%{opacity:0;transform:translate3d(0,-10px,0) scale(.97)}}
-@keyframes obR3{0%,44%{opacity:0;transform:translate3d(0,26px,0) scale(.94)}52%,86%{opacity:1;transform:none}94%,100%{opacity:0;transform:translate3d(0,-10px,0) scale(.97)}}
+/* ----- điện thoại + trang web giả ----- */
+.ph{position:absolute;left:38px;top:6px;width:224px;height:388px;border-radius:38px;padding:7px;
+    background:linear-gradient(160deg,#2c2a36,#14131a);
+    box-shadow:0 34px 60px -14px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.16),inset 0 1px 0 rgba(255,255,255,.2)}
+.ph::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:9;
+    background:linear-gradient(120deg,rgba(255,255,255,.1),transparent 34%)}
+.ph-nt{position:absolute;top:13px;left:50%;width:62px;height:17px;margin-left:-31px;border-radius:10px;background:#07060b;z-index:8}
+.ph-sc{position:relative;width:100%;height:100%;border-radius:31px;overflow:hidden;background:linear-gradient(180deg,#1e1d27,#13121a)}
+.pg-l{position:absolute;left:14px;height:7px;border-radius:4px;background:rgba(255,255,255,.13)}
+.pg-av{position:absolute;left:14px;top:40px;width:18px;height:18px;border-radius:50%;background:rgba(var(--nr),.55)}
+.pg-lg{position:absolute;left:38px;top:45px;width:66px;height:8px;border-radius:4px;background:rgba(255,255,255,.2)}
+.pg-hero{position:absolute;left:14px;top:66px;width:182px;height:60px;border-radius:12px;overflow:hidden;
+    background:linear-gradient(135deg,rgba(var(--nr),.4),rgba(130,120,220,.28) 70%)}
+.pg-hero::after{content:"";position:absolute;right:14px;top:12px;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 16px 3px rgba(255,255,255,.3)}
+.pg-ov{position:absolute;inset:0;z-index:3;pointer-events:none}
+.pg-ad{position:absolute;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:0 12px;border-radius:12px;overflow:hidden;color:#fff;font-size:11.5px;font-weight:700;
+    background:linear-gradient(135deg,#ff8a5c,#ff4f8b);box-shadow:0 6px 16px rgba(255,80,120,.25)}
+.pg-ad small{font-size:9.5px;font-weight:600;opacity:.85;margin-top:2px}
+.pg-ad em{position:absolute;top:5px;right:7px;font-style:normal;font-size:8px;font-weight:600;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,.4)}
+.pg-fl{background:linear-gradient(135deg,#ffd45e,#ff9d3d);color:#3a2300;box-shadow:0 6px 16px rgba(255,170,60,.25)}
+.pg-ck{position:absolute;z-index:1;left:0;right:0;bottom:0;height:40px;padding:0 12px 0 34px;display:flex;align-items:center;justify-content:space-between;
+    background:#2a2832;color:#fff;font-size:9.5px;font-weight:600;border-top:1px solid rgba(255,255,255,.1)}
+.pg-ck b{padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.18);font-size:9px}
+.pg-dim{position:absolute;inset:0;z-index:2;background:rgba(10,8,16,.58)}
+.pg-pop{position:absolute;z-index:3;left:30px;top:92px;width:150px;height:104px;padding:10px;border-radius:16px;text-align:center;background:#fff;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+.pg-x{position:absolute;top:4px;right:8px;font-style:normal;font-size:14px;color:#999;line-height:1}
+.pg-gf{height:38px;border-radius:10px;background:linear-gradient(135deg,#ffb86b,#ff5f8f);margin-bottom:6px}
+.pg-pop b{display:block;font-size:11px;color:#1b1a22}
+.pg-pop span{display:inline-block;margin-top:6px;padding:4px 14px;border-radius:999px;background:#ff4f8b;color:#fff;font-size:9.5px;font-weight:700}
+.pg-dw{position:absolute;left:14px;top:354px;width:8px;height:8px;z-index:4;will-change:transform,opacity}
+.pg-dot{position:absolute;inset:0;border-radius:50%;background:var(--ne);box-shadow:0 0 8px 3px rgba(var(--nr),.8);animation:pgDot 2.4s ease-in-out infinite}
+.pg-dot.gy{background:#8b8b93;box-shadow:none;animation:none;opacity:.8}
+.pg-dot.rd{background:linear-gradient(180deg,#F20021,#FF404D);box-shadow:0 0 12px #F8132C;animation:none}
+@keyframes pgDot{0%,100%{opacity:.6;transform:scale(.9)}50%{opacity:1;transform:scale(1.2)}}
+@keyframes pgTw{0%,100%{opacity:.4;transform:scale(.7) rotate(0)}50%{opacity:1;transform:scale(1.15) rotate(25deg)}}
+@keyframes pgSpin{to{transform:rotate(360deg)}}
+.pg-wv{position:absolute;left:-82px;top:258px;width:200px;height:200px;border-radius:50%;z-index:4;pointer-events:none;
+    background:radial-gradient(circle,transparent 54%,rgba(var(--nr),.6) 62%,transparent 70%);will-change:transform,opacity}
+.pg-spk{position:absolute;color:var(--ne);animation:pgTw 1.8s ease-in-out infinite}
+.pg-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap;
+    background:#2f2e39;color:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:0 8px 18px rgba(0,0,0,.4)}
+.pg-pill.ok{background:#17161d;color:var(--ne);border-color:rgba(var(--nr),.45)}
+.pg-bdw{position:absolute;left:30px;top:343px;z-index:4}
+.pg-cpw{position:absolute;z-index:4;left:14px;top:314px}
+.pg-tr{position:absolute;z-index:4;right:12px;top:36px}
+.pg-ts{position:absolute;z-index:7;left:0;right:0;bottom:18px;text-align:center}
+.pg-st{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;font-size:9.5px;font-weight:700;white-space:nowrap;background:rgba(var(--nr),.16);color:var(--ne)}
+.pg-st i{display:block;width:5px;height:5px;border-radius:50%;background:currentColor}
+.pg-st.off{background:rgba(255,255,255,.12);color:rgba(255,255,255,.65)}
+.pg-st.fl{position:absolute;z-index:4;left:30px;top:346px;background:#17161d;box-shadow:0 4px 10px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12)}
+.pg-st.fl.off{color:#b9b9c2}
+.pg-tp{position:absolute;z-index:7;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;opacity:0;pointer-events:none;
+    background:rgba(255,255,255,.22);border:1.5px solid rgba(255,255,255,.7)}
+.pg-rg{position:absolute;z-index:7;transform:rotate(-90deg);overflow:visible;pointer-events:none}
+.pg-rg .b{fill:none;stroke:rgba(255,255,255,.16);stroke-width:2}
+.pg-rg .f{fill:none;stroke:var(--ne);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:138.2;stroke-dashoffset:138.2}
+.pg-sh{position:absolute;z-index:6;border-radius:22px;padding:8px 12px 12px;color:#fff;
+    background:linear-gradient(180deg,#34333e,#22212a);border:1px solid rgba(255,255,255,.16);
+    box-shadow:0 -10px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.16);transform-origin:10px 254px;will-change:transform,opacity}
+.pg-gr{display:block;width:28px;height:3px;margin:0 auto 8px;border-radius:2px;background:rgba(255,255,255,.28)}
+.pg-sht{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:14px;font-weight:700}
+.pg-tg{font-size:9px;font-weight:600;color:rgba(255,255,255,.5)}
+.pg-rws{border-radius:12px;overflow:hidden;background:rgba(255,255,255,.07)}
+.pg-rw{display:flex;align-items:center;justify-content:space-between;gap:8px;height:30px;padding:0 10px;font-size:10px;font-weight:500}
+.pg-rw span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-rw+.pg-rw{border-top:1px solid rgba(255,255,255,.06)}
+.pg-rw u{position:relative;flex:none;width:26px;height:15px;border-radius:8px;background:#4a4954}
+.pg-rw u b{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.pg-tb{display:flex;gap:2px;padding:2px;margin-top:8px;border-radius:9px;background:rgba(255,255,255,.07)}
+.pg-tb span{flex:1;text-align:center;padding:5px 0;border-radius:7px;font-size:9.5px;font-weight:500;color:rgba(255,255,255,.55)}
+.pg-tb span.a{background:rgba(255,255,255,.15);color:#fff}
+.pg-ip{display:flex;align-items:center;gap:6px;margin-top:8px}
+.pg-ip span{flex:1;height:28px;line-height:28px;padding:0 9px;border-radius:9px;font-size:9.5px;color:rgba(255,255,255,.35);background:rgba(255,255,255,.08)}
+.pg-ip b{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:var(--ne);color:var(--ink)}
+.pg-hl{position:absolute;border:1.5px solid var(--ne);border-radius:14px;background:rgba(var(--nr),.14);box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 20px rgba(var(--nr),.45)}
+.pg-lb{position:absolute;padding:2px 7px;border-radius:6px 6px 0 0;font-size:8.5px;font-weight:700;color:var(--ink);background:var(--ne)}
+.pg-if{display:flex;align-items:center;gap:6px;height:34px;padding:0 6px 0 10px;border-radius:11px;background:rgba(255,255,255,.08)}
+.pg-if small{flex:none;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.45)}
+.pg-if span{flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg-if b{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:7px;background:rgba(255,255,255,.14)}
+.pg-bt{display:flex;gap:8px;margin-top:auto}
+.pg-bt span,.pg-bt b{flex:1;display:flex;align-items:center;justify-content:center;height:32px;border-radius:11px;font-size:10px;font-weight:600;background:rgba(255,255,255,.12)}
+.pg-bt b{background:var(--ne);color:var(--ink)}
+.pg-gh{position:absolute;z-index:3;left:14px;top:162px;width:182px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1.5px dashed rgba(var(--nr),.85);background:rgba(var(--nr),.1);color:var(--ne);font-size:10px;font-weight:700}
+.pg-pr{position:absolute;z-index:6;left:0;right:0;top:32px;height:3px;background:var(--ne);box-shadow:0 0 10px rgba(var(--nr),.8);transform-origin:0 50%}
+.pg-rl{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:rgba(10,8,16,.4)}
+.pg-rlc{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#2f2e39;color:var(--ne);border:1px solid rgba(255,255,255,.16);animation:pgSpin 1s linear infinite}
+${SCENE_KF}
+${ANI_CSS}
 @media (prefers-reduced-motion:reduce){.ob *,.ob *::before,.ob *::after{animation-duration:.01s!important}}`;
 
             const css = document.createElement('style');

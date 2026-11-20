@@ -3745,7 +3745,7 @@ to{opacity:1;transform:scale(1)}}
 .ob-btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;height:48px;margin:0 20px;
     border-radius:999px;font-size:16px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.3);background:rgba(255,255,255,.07);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);will-change:transform;
-    pointer-events:none;transition:background .5s ease,color .5s ease,box-shadow .5s ease}
+    pointer-events:none;transition:background .5s ease,color .5s ease,box-shadow .5s ease;width:calc(100% - 70%);margin:0 auto}
 .ob-btn.on{color:#15111a;background:linear-gradient(180deg,#fbf8f2,#e9e3d8);
     box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(255,255,255,.22),0 12px 32px -8px rgba(var(--nr),.5);pointer-events:auto}
 .ob-btn.on:active{background:#ddd6c9}

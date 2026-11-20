@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  Chặn quảng cáo với một chạm.
 // @match        *://*/*
 // @grant        GM_getValue

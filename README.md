@@ -8,9 +8,8 @@ Dot Ads là extension chặn quảng cáo cho Safari iOS với giao diện tối
 
 - **Bật/tắt nhanh**: chấm xanh nhấp nháy là đang bật, chấm xám là đang tắt.
 - **Tự động chặn**: ẩn quảng cáo, banner, popup và nội dung nổi theo tên `id`/`class` phổ biến (`ad`, `ads`, `banner`, `popup`, `float-ad`, `app-download`...).
-- **Chặn popup & tab lạ**: chặn lớp phủ và tab tự mở khi không có thao tác thật của người dùng (`window.open`, popunder, clickunder).
+- **Chặn & ẩn popup, tab lạ**: chặn lớp phủ, tab tự mở (`window.open`, popunder, clickunder) khi không có thao tác thật, và ẩn khung, viền, nút ✕ còn sót lại.
 - **Chặn chuyển hướng ngoài**: chặn điều hướng sang tên miền lạ, link rút gọn, trang cờ bạc/cá độ và các link mở app (`appname://`).
-- **Ẩn popup & tab lạ**: ẩn luôn khung, viền và nút ✕ còn sót lại sau khi xoá quảng cáo.
 - **Chặn tức thì**: ghi nhớ khung và popup đã ẩn để lần sau ẩn ngay khi tải trang.
 - **Quảng cáo video**: tự bỏ qua quảng cáo trong JW Player, Video.js, IMA; lọc cấu hình VAST/VMAP/ad schedule. Không đụng vào player chính.
 - **Qua mặt phát hiện adblock**: giả lập các phần tử "mồi" (bait) và ẩn tường chặn kiểu "hãy tắt trình chặn quảng cáo".

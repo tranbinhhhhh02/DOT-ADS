@@ -41,7 +41,6 @@
 
     function adSuspect(h, p, q, port, nav) {
         if (!h) return false;
-
         if (/^(localhost|.+\.(local|lan|internal))$|^(10|127)\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\.|^\[(::1|fe80|fc|fd)/.test(h)) return false;
 
         const GN = /(^|[.\-])(\d*bet\d*|nhacai\w*|casino\w*|jackpot\w*|xoso\w*|soicau\w*|sbobet|1xbet|8xbet|12bet|188bet|fb88|w88|m88|jun88|hi88|vn88|sv88|me88|bong88|kubet\w*|789club|go88|b52club|sunwin|hitclub|rikvip|v9bet|iwin)([.\-]|$)/.test(h);
@@ -63,10 +62,8 @@
         if (!safe) {
             if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.charAt(0) === '[') sf += 3;
             else {
-
-                if (/adserv|vertising|pop(under|magic)|onclick|click(adu|adilla|aine|under)|cpm|(performance|creative)format|profitablegate|exchangeclear|bet365|1xbet|188bet|sbobet|nhacai|casino/.test(h) ||
+                if (/adserv|vertising|pop(under|magic)|onclick|click(adu|adilla|aine|under)|cpm|(performance|creative)format|profitablegate|exchangeclear|bet365|nhacai|casino/.test(h) ||
                     /(^|[.\-_])(ads?|adv|advert\w*|adx|adtech|adsrv|banners?|popups?|cpm|rtb|vast|vpaid|prebid)\d*([.\-_]|$)/.test(h)) s += 3;
-
                 if (!/(^|\.)(cloudfront\.net|amazonaws\.com|azureedge\.net|akamaihd\.net|akamaized\.net|fastly\.net|b-cdn\.net|herokuapp\.com|vercel\.app|netlify\.app|pages\.dev|workers\.dev)$/.test(h) &&
                     L.slice(0, -1).some(l => l.length >= 10 && !/^xn--/.test(l) && ((cnt(l, /\d/g) >= 3 && /[a-z]/.test(l)) || !/[aeiouy]/.test(l)))) sf += 2;
                 if (/(^|\.)xn--/.test(h)) sf += 2;
@@ -79,7 +76,6 @@
 
         if (/\/(pagead|adsbygoogle|aclib|popunder|pop-under|clickunder|popmagic|prebid|adserv|advert|doubleclick)|utm_medium=pop/.test(p + q)) s += 3;
         else if (/\/(ads?|banners?|tracking)([\/._?-]|$)/.test(p + q)) s += 2;
-
         if (/[?&](zone_?id|campaign_?id|click_?id|sub_?id|pub(lisher)?_?id|ad_?unit|ad_?id|creative_?id|placement_?id|cpm)=/.test(q)) s += 2;
 
         return (s + sf) >= 4;
@@ -110,6 +106,21 @@
         if (/^(github|githubusercontent|cloudfront|amazonaws|azureedge|akamaihd|akamaized|fastly|herokuapp|vercel|netlify|pages|workers|blogspot|blogger|wordpress|appspot|firebaseapp|weebly|wixsite|googleusercontent|sharepoint|pythonanywhere|glitch|onrender|neocities|000webhostapp|infinityfreeapp)$/.test(sld)) return L.slice(cc ? -4 : -3).join('.');
         return sld;
     };
+
+    /* URL quảng cáo người dùng nhập -> khoá chặn gọn: "host" hoặc "host/đường-dẫn?query" (bỏ giao thức, www, #hash).
+       Chuỗi không phải URL (từ khoá, tinyurl, appname://) giữ nguyên. */
+    const URLISH = /^(https?:)?\/\/|^www\./i;
+    const normLink = v => {
+        v = String(v == null ? '' : v).trim();
+        if (!URLISH.test(v)) return v;
+        try {
+            const o = new URL(/^www\./i.test(v) ? 'https://' + v : v.replace(/^\/\//, 'https://'));
+            let s = o.hostname.replace(/^www\./i, '') + o.pathname + o.search;
+            if (!o.search) s = s.replace(/\/+$/, '');
+            return s.toLowerCase();
+        } catch (e) { return v; }
+    };
+    const hostKey = h => String(h || '').toLowerCase().replace(/^www\./, '');
 
     const DOT_SIDE = 'left', DOT_X = 18, DOT_Y = 14;
     const COLOR_GREEN = { hex: '#1fff6a', rgb: '31,255,106', ac: '#34d36b', acRgb: '52,211,107', ink: '#04230f' };
@@ -164,7 +175,7 @@
     const APP_ALLOW = (CONFIG.appAllow || []).map(x => String(x).toLowerCase().replace(/:.*$/, '')).filter(Boolean);
     const LEGACY_SITE_KEY = 'gdar_rules', CACHE_KEY = 'gdar_cache', HOST = location.hostname, SITE_PREFIX = 'site:';
     const BASE = siteBase(HOST);
-    const HOLD_MS = 400, TOGGLE_DELAY = 0, RED_MS = 150, PICK_MS = 250, MOVE_TOL = 10;
+    const HOLD_MS = 400, RED_MS = 150, PICK_MS = 250, MOVE_TOL = 10;
     const ATTR = 'data-gdar', INV_ATTR = 'data-gdar-inv', PICK_ATTR = 'data-gdar-pick', PRESS_ATTR = 'data-gdar-press';
     const LNK_ATTR = 'data-gdar-lk', TOUCH_ATTR = 'data-gdar-t', LNK_HREF = 'data-gdar-href', GUARD_ATTR = 'data-gdar-g';
     const Q_ATTR = 'data-gdar-q', MARK = 'data-gdar-m', OK_ATTR = 'data-gdar-ok', PA_ATTR = 'data-gdar-pa', PICKED_ATTR = 'data-gdar-picked';
@@ -187,6 +198,7 @@
     const MSG = '__dotads';
     const ANTI = CONFIG.antiAdblock !== false;
     const PLAYER_ADS = CONFIG.playerAds !== false;
+    const K3 = ['sel', 'txt', 'lnk'];
 
     const AD_PLAYER = '.jwplayer.jw-flag-ads,.jwplayer.jw-flag-ads-vpaid,.jwplayer.jw-flag-ads-googleima,.video-js.vjs-ad-playing,.video-js.vjs-ad-loading,[class*="ad-playing" i],[class*="ad-showing" i]';
     const AD_SKIP_SEL = '.jw-skip,.jw-skippable,.videoAdUiSkipButton,.ima-skip-button,.vjs-skip-button,[class*="skip-ad" i],[class*="ad-skip" i],[class*="skipad" i],[class*="skip-button" i]';
@@ -215,6 +227,7 @@
         '[style*="fixed" i]', '[style*="2147483" i]'
     ].join(',');
 
+    /* ---------- lưu trữ (GM + localStorage) ---------- */
     const hasGM = typeof GM !== 'undefined' && GM;
     const gmGet = (hasGM && typeof GM.getValue === 'function') ? (k, d) => GM.getValue(k, d)
         : (typeof GM_getValue === 'function' ? (k, d) => Promise.resolve(GM_getValue(k, d)) : null);
@@ -267,21 +280,14 @@
             return (v && Array.isArray(v.f) && v.f.length) ? v.f : null;
         } catch (e) { return null; }
     };
-    const saveFontCache = async list => {
-        if (!GMOK) return;
-        try { await gmSet(FONT_CACHE_KEY, JSON.stringify({ t: Date.now(), f: list })); } catch (e) {}
-    };
     const fetchFontData = async () => {
         const css = await xhrGet(FONT_CSS_URL, 'text');
-        const blocks = String(css).match(/@font-face\s*\{[^}]*\}/g) || [];
         const out = [];
-        for (const b of blocks) {
+        for (const b of (String(css).match(/@font-face\s*\{[^}]*\}/g) || [])) {
             const u = /url\(\s*['"]?([^)'"]+)['"]?\s*\)/.exec(b);
             if (!u) continue;
-            const ur = /unicode-range:\s*([^;]+);/.exec(b);
-            const w = /font-weight:\s*([^;]+);/.exec(b);
-            const buf = await xhrGet(u[1], 'arraybuffer');
-            out.push({ r: ur ? ur[1].trim() : '', w: w ? w[1].trim() : '200 800', d: b64enc(buf) });
+            const ur = /unicode-range:\s*([^;]+);/.exec(b), w = /font-weight:\s*([^;]+);/.exec(b);
+            out.push({ r: ur ? ur[1].trim() : '', w: w ? w[1].trim() : '200 800', d: b64enc(await xhrGet(u[1], 'arraybuffer')) });
         }
         return out;
     };
@@ -304,7 +310,7 @@
             let list = await readFontCache();
             if (!list) {
                 list = await fetchFontData();
-                if (list && list.length) saveFontCache(list);
+                if (list && list.length && GMOK) gmSet(FONT_CACHE_KEY, JSON.stringify({ t: Date.now(), f: list })).catch(() => {});
             }
             if (!list || !list.length) throw new Error('empty');
             const faces = list.map(it => {
@@ -314,9 +320,7 @@
             });
             await Promise.all(faces.map(f => f.load()));
             faces.forEach(f => document.fonts.add(f));
-        } catch (e) {
-            fontFallbackLink();
-        }
+        } catch (e) { fontFallbackLink(); }
     }
 
     const gmGetSync = k => {
@@ -338,15 +342,18 @@
     const normSet = o => {
         const s = Object.assign({}, DEF_SET, o);
         if (o && 'ovl' in o) s.pop = !!(s.pop || o.ovl);
-        delete s.ovl;
-        delete s.light;
-        delete s.sus;
-        delete s.deep;
+        ['ovl', 'light', 'sus', 'deep'].forEach(k => delete s[k]);
         return s;
     };
     const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
     const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
-    const normRules = o => { const r = DEF_RULES(); Object.keys(r).forEach(k => { r[k] = strArr(o && o[k]); }); if (o && o._t) r._t = o._t; return r; };
+    const normRules = o => {
+        const r = DEF_RULES();
+        K3.forEach(k => { r[k] = strArr(o && o[k]); });
+        r.lnk = [...new Set(r.lnk.map(normLink).filter(Boolean))];
+        if (o && o._t) r._t = o._t;
+        return r;
+    };
     const ts = o => (o && +o._t) || 0;
     const normLearn = o => {
         const r = DEF_LEARN();
@@ -355,10 +362,13 @@
         return r;
     };
 
-    const mergeRules = (dst, src) => {
+    const mergeRules = (dst, src, replace) => {
         const n = normRules(src);
         let added = 0;
-        ['sel', 'txt', 'lnk'].forEach(k => n[k].forEach(v => { if (!dst[k].includes(v)) { dst[k].push(v); added++; } }));
+        K3.forEach(k => {
+            if (replace) { dst[k] = n[k].slice(); added++; }
+            else n[k].forEach(v => { if (!dst[k].includes(v)) { dst[k].push(v); added++; } });
+        });
         return added;
     };
     const mergeLearn = (dst, src) => {
@@ -376,6 +386,7 @@
         return h.indexOf('.') > 0 && siteBase(h) === BASE;
     };
 
+    const newer = (a, b) => (a && b) ? ((b._t || 0) > (a._t || 0) ? b : a) : (a || b || null);
     let writing = 0, wgen = 0;
     const gReadRaw = async k => {
         let a = null;
@@ -386,7 +397,6 @@
                 if (v && typeof v === 'object') a = v;
             } catch (e) {}
         }
-
         const b = lsGet('gdar_' + k);
         return newer(a, (b && typeof b === 'object') ? b : null);
     };
@@ -411,7 +421,6 @@
     const syncSet = gmGetSync('settings'), syncGlb = gmGetSync('global');
     const syncSite = gmGetSync(siteKey), syncLearn = gmGetSync(learnKey);
     const cache = lsGet(CACHE_KEY) || {};
-    const newer = (a, b) => (a && b) ? ((b._t || 0) > (a._t || 0) ? b : a) : (a || b || null);
     let set = normSet(newer(syncSet, cache.set));
     let glb = normRules(newer(syncGlb, cache.glb));
     let site = normRules(newer(syncSite, cache.site) || lsGet(LEGACY_SITE_KEY));
@@ -437,8 +446,7 @@
     async function migrateLegacy() {
         if (!GMOK) return;
         const ks = await gmList();
-        const sp = [], lp = [];
-        ks.forEach(k => { if (isLegacyFor(k, SITE_PREFIX)) sp.push(k); else if (isLegacyFor(k, 'learn:')) lp.push(k); });
+        const sp = ks.filter(k => isLegacyFor(k, SITE_PREFIX)), lp = ks.filter(k => isLegacyFor(k, 'learn:'));
         if (sp.length) {
             const cur = normRules(await gRead(siteKey, DEF_RULES()));
             let add = 0;
@@ -455,10 +463,10 @@
         }
     }
 
-    let scope = 'all', tab = 'sel', shieldUntil = 0;
+    let scope = 'all', tab = 'sel';
     let frameRules = {};
     const pickedHosts = new Set();
-    const shieldOn = () => set.on || Date.now() < shieldUntil;
+    const shieldOn = () => set.on;
     let uiReady = false, hostEl = null, dotEl = null;
     let promote = () => {}, render = () => {};
     let keys = [], lkeys = [], lastRules = null;
@@ -576,9 +584,16 @@
     })();
     const AUTO_CSS = `${AUTO_SEL}{${HIDE}}`;
 
-    const parseMulti = raw => {
+    /* tách nhiều mục: ; hoặc xuống dòng (tab Liên kết: thêm dấu phẩy / khoảng trắng, rồi chuẩn hoá URL) */
+    const parseMulti = (raw, lnk) => {
         const out = [];
-        String(raw || '').split(/[;\n]+/).forEach(x => { x = x.trim(); if (x && !out.includes(x)) out.push(x); });
+        String(raw || '').split(/[;\n]+/).forEach(x => {
+            (lnk ? x.split(/[\s,]+/) : [x]).forEach(y => {
+                y = y.trim();
+                if (lnk) y = normLink(y);
+                if (y && !out.includes(y)) out.push(y);
+            });
+        });
         return out;
     };
 
@@ -730,8 +745,7 @@
         !el.firstElementChild && !(el.textContent || '').trim() && BAIT_RE.test(clsOf(el) + ' ' + (el.id || '')), false);
 
     const managed = el => tryQ(() => {
-        const ks = Object.keys(el);
-        for (const k of ks) if (k.charCodeAt(0) === 95 && /^(__react|__vue|_vnode|__vnode|_reactRoot|__svelte)/.test(k)) return true;
+        for (const k of Object.keys(el)) if (k.charCodeAt(0) === 95 && /^(__react|__vue|_vnode|__vnode|_reactRoot|__svelte)/.test(k)) return true;
         return false;
     }, false);
     const KEEP = new WeakSet();
@@ -862,8 +876,7 @@
     const AD_SRC_SEL = 'iframe[src],embed[src],object[data],script[src],img[src],video[src],audio[src],source[src]';
     const adSrcBad = u => { if (!set.on || !u) return false; if (appUrl(u)) return true; const o = parseExt(u); return !!o && adHost(o, false); };
 
-    /* Quảng cáo dạng video nằm trong player: không gỡ phần tử (player sẽ treo ở vòng xoay),
-       chỉ tắt tiếng, tua nhanh tới cuối rồi báo "ended" để player vào thẳng nội dung. */
+    /* Quảng cáo video trong player: không gỡ phần tử (player sẽ treo), chỉ tắt tiếng, tua tới cuối rồi báo "ended". */
     function finishAdMedia(m) {
         tryQ(() => {
             m.setAttribute(MARK, '');
@@ -952,9 +965,7 @@
             if (el.id === 'gdar-host') return false;
             const tag = el.tagName;
             if (tag === 'BODY' || tag === 'HTML') break;
-            if (tag === 'A' || tag === 'AREA') {
-                if (urlBad(el.getAttribute('href') || el.getAttribute(LNK_HREF))) return true;
-            }
+            if ((tag === 'A' || tag === 'AREA') && urlBad(el.getAttribute('href') || el.getAttribute(LNK_HREF))) return true;
             for (const at of CLICK_URL_ATTRS) {
                 const v = el.getAttribute(at);
                 if (!v || v.length > 4000) continue;
@@ -1006,13 +1017,13 @@
         const VAST_RE = /(^|[\/_.-])(vast|vmap)([\/_.?-]|\d|$)|\/(preroll|pre-roll|adtag|ad-tag)([\/_.?-]|$)|[?&](vast|vmap|adtag|adtagurl|ad_tag_url|vpaid)=/i;
         const VAST_XML = '<?xml version="1.0" encoding="UTF-8"?><VAST version="3.0"></VAST>';
         const DATA_SCRIPT = /__next_f|__NEXT_DATA__|__NUXT__|__INITIAL_STATE__|self\.__next/;
-        const okHost = h => { const r = rules(); return OKHOST.test(h) || !!(r && r.allow && r.allow.some(k => h === k || h.endsWith('.' + k))); };
+        const allowedH = h => { const r = rules(); return !!(r && r.allow && r.allow.some(k => h === k || h.endsWith('.' + k))); };
+        const okHost = h => OKHOST.test(h) || allowedH(h);
         const hit = (o, list) => {
             const h = o.hostname.toLowerCase();
             const full = h + o.pathname.toLowerCase() + o.search.toLowerCase();
             return list.some(k => /[\/?=&]/.test(k) ? full.includes(k) : h.includes(k));
         };
-        const allowedH = h => { const r = rules(); return !!(r && r.allow && r.allow.some(k => h === k || h.endsWith('.' + k))); };
         const susOf = (o, nav) => {
             const r = rules();
             return !!(r && typeof SUS === 'function' && SUS(o.hostname.toLowerCase(), o.pathname.toLowerCase(), o.search.toLowerCase(), o.port, nav));
@@ -1548,13 +1559,13 @@
                 try { if (w && !w.__gdarO) { w.__gdarO = 1; Object.defineProperty(w, 'open', { configurable: false, get: () => guardedOpen, set: () => {} }); } } catch (e) {}
                 return w;
             };
+            const defGet = (P, p, wrap) => {
+                const d = Object.getOwnPropertyDescriptor(P, p);
+                if (d && d.get) Object.defineProperty(P, p, { configurable: true, enumerable: d.enumerable, get: mask(wrap(d.get), d.get) });
+            };
             const IP = W.HTMLIFrameElement.prototype;
             defGet(IP, 'contentWindow', g => function () { return fixWin(g.call(this)); });
             defGet(IP, 'contentDocument', g => function () { const d = g.call(this); try { if (d) fixWin(d.defaultView); } catch (e) {} return d; });
-            function defGet(P, p, wrap) {
-                const d = Object.getOwnPropertyDescriptor(P, p);
-                if (d && d.get) Object.defineProperty(P, p, { configurable: true, enumerable: d.enumerable, get: mask(wrap(d.get), d.get) });
-            }
         } catch (e) {}
 
         try {
@@ -1639,7 +1650,7 @@
         });
         return b;
     }
-    /* p: khung player; btn: nút "Bỏ qua" tìm thấy theo chữ (chế độ generic, chỉ động vào video ngắn như quảng cáo) */
+    /* p: khung player; btn: nút "Bỏ qua" tìm theo chữ (chế độ generic, chỉ động vào video ngắn như quảng cáo) */
     function skipAdIn(p, btn) {
         if (!p || p.nodeType !== 1 || inHostNode(p)) return;
         const generic = !!btn;
@@ -2332,11 +2343,13 @@
             src: (srcEl && (srcEl.currentSrc || srcEl.getAttribute('src'))) || '',
             hideSel: '', host: location.hostname, shadow: shadow ? host.tagName.toLowerCase() : ''
         };
-        const ho = parseExt(hrefV);
+        const ho = parseExt(hrefV), so = parseExt(info.src);
         if (link && ho) info.hideSel = `a[href*="${attrEsc(ho.hostname)}" i]`;
-        const so = parseExt(info.src);
         if (!info.hideSel && so && info.tag === 'iframe') info.hideSel = `iframe[src*="${attrEsc(so.hostname)}" i]`;
         if (!info.hideSel && so && info.tag === 'img') info.hideSel = `img[src*="${attrEsc(so.hostname)}" i]`;
+        /* tên miền có thể chặn ở tab Liên kết (link hoặc nguồn tải) */
+        const bo = ho || so;
+        info.blkHost = bo ? hostKey(bo.hostname) : '';
         return info;
     }
 
@@ -2416,6 +2429,13 @@
                 if (ix >= 0) site.sel.splice(ix, 1);
                 site.sel.push(s);
             });
+            siteWrite();
+            applyRules();
+            if (uiReady) render();
+        } else if (c === 'blk' && PK.info && PK.info.blkHost) {
+            const ix = site.lnk.indexOf(PK.info.blkHost);
+            if (ix >= 0) site.lnk.splice(ix, 1);
+            site.lnk.push(PK.info.blkHost);
             siteWrite();
             applyRules();
             if (uiReady) render();
@@ -2643,7 +2663,6 @@
             up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
             layers: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
             chev: '<path d="M9 6l6 6-6 6"/>',
-            reload: '<path d="M20 11a8 8 0 1 0-.9 4.3"/><path d="M20 4v7h-7"/>',
             shield: '<path d="M12 3l8 3v6c0 5-3.4 8.2-8 9-4.6-.8-8-4-8-9V6l8-3z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
             bookmark: '<path d="M6 4h12v17l-6-4-6 4z"/>'
         };
@@ -2727,11 +2746,11 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
             else { const c = t.closest && t.closest(INV_SEL); if (c) invCheck(c, true); }
         });
 
-        const PH = { sel: 'smartbanner hoặc .banner, #popup', txt: 'Quảng cáo, tải ứng dụng', lnk: 'tinyurl, bet, win hoặc appname://' };
+        const PH = { sel: 'smartbanner hoặc .banner, #popup', txt: 'Quảng cáo, tải ứng dụng', lnk: 'Dán URL quảng cáo, tinyurl, bet hoặc appname://' };
         const PH_BULK = {
             sel: 'Mỗi mục cách nhau bằng ; hoặc xuống dòng',
             txt: 'Mỗi từ khoá cách nhau bằng ; hoặc xuống dòng',
-            lnk: 'Mỗi tên miền cách nhau bằng ; hoặc xuống dòng'
+            lnk: 'Dán một hoặc nhiều URL / tên miền, cách nhau bằng xuống dòng, ; hoặc dấu cách'
         };
 
         async function copyText(text) {
@@ -3132,7 +3151,8 @@ to{opacity:1;transform:scale(1)}}
 .g-cp{flex:none;gap:5px;padding:6px 10px;border-radius:var(--r);font-size:13px;font-weight:600}
 .g-acts{display:flex;gap:8px;margin-top:12px}
 .g-acts + .g-acts{margin-top:8px}
-.g-act{flex:1;gap:7px;padding:11px 8px;border-radius:12px;font-size:14px;font-weight:600}
+.g-act{flex:1;min-width:0;gap:7px;padding:11px 8px;border-radius:12px;font-size:14px;font-weight:600}
+#g-blk span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:reduce){.g-chip{animation-duration:.01s!important}}
     </style>
 
@@ -3222,6 +3242,9 @@ to{opacity:1;transform:scale(1)}}
                 <button class="g-act" id="g-copyall">${ic('copy', 15)}<span>Sao chép tất cả</span></button>
                 <button class="g-act pri" id="g-hideit">${ic('eyeoff', 15)}<span>Ẩn phần tử này</span></button>
             </div>
+            <div class="g-acts">
+                <button class="g-act pri" id="g-blk" style="display:none">${ic('shield', 15)}<span></span></button>
+            </div>
             </div>
         </div>
     </div>`;
@@ -3244,7 +3267,7 @@ to{opacity:1;transform:scale(1)}}
 
             renderSheet = function () {
                 SW_KEYS.forEach(([id, k]) => { $(id).checked = !!set[k]; });
-                $('g-lnk-s').textContent = 'Chặn tên miền lạ và mở app' + (lnkBlocked ? ' · đã chặn ' + lnkBlocked : '');
+                $('g-lnk-s').textContent = 'Chặn tên miền lạ, URL quảng cáo và mở app' + (lnkBlocked ? ' · đã chặn ' + lnkBlocked : '');
                 const nLearn = learnActive();
                 $('g-learn-s').textContent = nLearn ? 'Đã nhớ ' + nLearn + ' mục, ẩn ngay khi tải' : 'Nhớ khung và popup cho lần sau';
                 $('g-learn-s').classList.toggle('on', nLearn > 0);
@@ -3256,7 +3279,7 @@ to{opacity:1;transform:scale(1)}}
                 $('g-sc-n').textContent = count(cur());
                 const siteLabel = BASE.indexOf('.') < 0 ? BASE + '.*' : BASE;
                 $('g-hint').textContent = scope === 'all' ? 'Áp dụng cho mọi trang'
-                    : scope === 'site' ? 'Áp dụng cho ' + siteLabel + ''
+                    : scope === 'site' ? 'Áp dụng cho ' + siteLabel
                     : 'Khung nhúng ' + scope.slice(2) + ' · tải lại để áp dụng';
                 $('g-in').placeholder = PH[tab];
                 $('g-bulk').placeholder = PH_BULK[tab];
@@ -3283,8 +3306,9 @@ to{opacity:1;transform:scale(1)}}
                 });
             };
 
+            /* tab Liên kết: URL đầy đủ được tự tách thành tên miền (hoặc tên miền/đường dẫn) trong parseMulti */
             function addMany(raw) {
-                const items = parseMulti(raw), arr = cur()[tab];
+                const items = parseMulti(raw, tab === 'lnk'), arr = cur()[tab];
                 let added = 0, dup = 0, bad = 0;
                 items.forEach(v => {
                     if (tab === 'sel' && !NAME_RE.test(v) && !validSel(v)) { bad++; return; }
@@ -3323,14 +3347,6 @@ to{opacity:1;transform:scale(1)}}
                 settings: set, global: glb, sites: await listSites()
             }, null, 2);
 
-            const mergeInto = (dst, src, replace) => {
-                const n = normRules(src);
-                ['sel', 'txt', 'lnk'].forEach(k => {
-                    if (replace) dst[k] = n[k].slice();
-                    else n[k].forEach(v => { if (!dst[k].includes(v)) dst[k].push(v); });
-                });
-            };
-
             async function importData(text) {
                 let d;
                 let raw = String(text || '').replace(/^\uFEFF/, '').trim();
@@ -3345,7 +3361,7 @@ to{opacity:1;transform:scale(1)}}
                 const jobs = [];
                 ioMsg('Đang lưu…');
                 if (d.settings && typeof d.settings === 'object') { set = normSet(d.settings); jobs.push(gWrite('settings', set)); }
-                if (d.global) { mergeInto(glb, d.global, replace); jobs.push(gWrite('global', glb)); }
+                if (d.global) { mergeRules(glb, d.global, replace); jobs.push(gWrite('global', glb)); }
                 if (d.sites && typeof d.sites === 'object') {
                     const grouped = {};
                     Object.keys(d.sites).forEach(h => {
@@ -3356,10 +3372,10 @@ to{opacity:1;transform:scale(1)}}
                     });
                     for (const b of Object.keys(grouped)) {
                         nSites++;
-                        if (b === BASE) { mergeInto(site, grouped[b], replace); jobs.push(siteWrite()); }
+                        if (b === BASE) { mergeRules(site, grouped[b], replace); jobs.push(siteWrite()); }
                         else {
                             const c2 = replace ? DEF_RULES() : normRules(await gRead(SITE_PREFIX + b, DEF_RULES()));
-                            mergeInto(c2, grouped[b], replace);
+                            mergeRules(c2, grouped[b], replace);
                             jobs.push(gWrite(SITE_PREFIX + b, c2));
                         }
                     }
@@ -3490,6 +3506,11 @@ to{opacity:1;transform:scale(1)}}
                     box.appendChild(row);
                 });
                 if (!box.children.length) box.innerHTML = '<div class="g-empty" style="padding:14px">Phần tử không có id / class / name</div>';
+
+                /* nút chặn nhanh URL: link hoặc nguồn tải ngoài trang -> thêm vào tab Liên kết */
+                const bb = $('g-blk');
+                bb.style.display = info.blkHost ? '' : 'none';
+                bb.lastElementChild.textContent = 'Chặn ' + info.blkHost;
                 if (!ctl2.isOpen()) ctl2.open();
             };
 
@@ -3512,17 +3533,18 @@ to{opacity:1;transform:scale(1)}}
                     p.host !== HOST && `frame: ${p.host}`].filter(Boolean).join('\n');
                 flash(tg.closest('button') || $('g-copyall'), await copyText(txt), idleAll);
             });
-            bind($('g-hideit'), 'click', () => {
+            const applyCmd = c => () => {
                 if (!pickedInfo) return;
                 if (pickedRid) {
-
-                    sendCmd(pickedRid, 'hide');
+                    sendCmd(pickedRid, c);
                     const h = pickedInfo.host;
                     setTimeout(() => loadFrameHost(h), 800);
-                } else handlePickCmd('hide');
+                } else handlePickCmd(c);
                 render();
                 closeInfo();
-            });
+            };
+            bind($('g-hideit'), 'click', applyCmd('hide'));
+            bind($('g-blk'), 'click', applyCmd('blk'));
         }
 
         render = function () {
@@ -3567,7 +3589,6 @@ to{opacity:1;transform:scale(1)}}
             cancel();
             if (was && !opened) {
                 set.on = !set.on;
-                if (!set.on) { shieldUntil = Date.now() + TOGGLE_DELAY; }
                 gWrite('settings', set);
                 render();
                 applyRules();
@@ -3638,9 +3659,6 @@ to{opacity:1;transform:scale(1)}}
     transition:transform .35s cubic-bezier(.16,1,.3,1)}
 .wl-go:active{transform:scale(.97);transition-duration:.12s}
 .wl-go > svg,.wl-go > span:last-child{position:relative}
-.wl-fx{position:absolute;inset:0;border-radius:inherit;pointer-events:none}
-.wl-rn{position:absolute;left:1px;top:1px;width:calc(100% - 2px);height:calc(100% - 2px);overflow:visible}
-.wl-rn rect{fill:none;stroke-linecap:round}
 .wl-skip{display:block;margin:2px auto 0;padding:11px 28px;font-size:14px;font-weight:600;color:rgba(255,255,255,.5);transition:color .2s ease,transform .15s ease}
 .wl-skip:active{color:rgba(255,255,255,.85);transform:scale(.96)}
 .wl.show .wl-i{animation:wlUp .68s cubic-bezier(.16,1,.3,1) var(--d,0s) backwards}
@@ -3652,8 +3670,6 @@ to{opacity:1;transform:scale(1)}}
             const SPARK = '<path d="M11 2.5l2.1 5.9 5.9 2.1-5.9 2.1L11 18.5l-2.1-5.9L3 10.5l5.9-2.1z"/><path d="M19 14.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z"/>';
             const HEART = '<path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 5 6.4 5c2 0 3.6 1 5.6 3 2-2 3.6-3 5.6-3 3.4 0 5.5 3.4 4 6.8C19.5 16.4 12 21 12 21z"/>';
             const BOOK = '<path d="M2.5 5A2 2 0 0 1 4.5 3H11v16.5H5A2.5 2.5 0 0 0 2.5 22V5z"/><path d="M21.5 5A2 2 0 0 0 19.5 3H13v16.5h6a2.5 2.5 0 0 1 2.5 2.5V5z"/>';
-            const RING = '<svg class="wl-rn" aria-hidden="true">' +
-                ['g3', 'g2', 'g1'].map(c => `<rect class="${c}" pathLength="100" width="100%" height="100%" rx="23" ry="23"/>`).join('') + '</svg>';
 
             const css = document.createElement('style');
             css.textContent = WL_CSS;
@@ -3668,7 +3684,7 @@ to{opacity:1;transform:scale(1)}}
                     <div class="wl-ic" style="--d:.1s"><span class="wl-ico">${fic(SPARK, 34)}</span><span class="wl-hb">${fic(HEART, 14)}</span></div>
                     <div class="wl-t wl-i" style="--d:.18s">Bạn mới dùng Dot Ads?</div>
                     <div class="wl-s wl-i" style="--d:.24s">Chưa đến một phút để làm quen. Bỏ qua cũng được, hướng dẫn luôn có sẵn trong bảng điều khiển.</div>
-                    <button class="wl-go wl-i" style="--d:.3s"><span class="wl-fx">${RING}</span>${fic(BOOK, 20)}<span>Hướng dẫn sử dụng</span></button>
+                    <button class="wl-go wl-i" style="--d:.3s">${fic(BOOK, 20)}<span>Hướng dẫn sử dụng</span></button>
                     <button class="wl-skip wl-i" style="--d:.36s">Bỏ qua</button>
                 </div>`;
             root.appendChild(el);
@@ -3703,7 +3719,6 @@ to{opacity:1;transform:scale(1)}}
             const wait = ms => new Promise(r => setTimeout(r, ms));
             const STEP = 46, DUR = 700, PAGE_MS = 8000;
 
-            /* ---------- Minh hoạ hoàn toàn mới: nét tối giản, một trang web mẫu + một chấm ---------- */
             const L = w => `<i class="nx-l" style="width:${w}%"></i>`;
             const pill = (cls, txt) => `<span class="nx-pill ${cls}">${txt}</span>`;
             const okTxt = t => ic('check', 12) + t;
@@ -3738,7 +3753,7 @@ to{opacity:1;transform:scale(1)}}
                 },
                 {
                     t: 'Thấy phiền là ẩn',
-                    s: 'Nhấn giữ bất kỳ phần tử nào trên trang, xem chi tiết rồi ẩn nó ngay.',
+                    s: 'Nhấn giữ bất kỳ phần tử nào trên trang, xem chi tiết rồi ẩn hoặc chặn luôn link quảng cáo của nó.',
                     v: () => '<div class="nx-s"><div class="nx-pg">' + L(48) + L(84) +
                         '<div class="nx-cw"><div class="nx-ad"><em>Quảng cáo</em></div><i class="nx-sel"></i></div>' +
                         L(72) + L(90) + L(56) + '<div class="nx-f4"></div></div>' +
@@ -3793,8 +3808,7 @@ to{opacity:1;transform:scale(1)}}
     transition:width .5s cubic-bezier(.3,.9,.3,1),background .4s ease}
 .ob-dots i.a{width:28px;background:rgba(255,255,255,.2)}
 .ob-dots b{position:absolute;inset:0;border-radius:3px;background:#fff;transform:scaleX(0);transform-origin:0 50%}
-.ob-btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;width:calc(100% - 70%);height:48px;margin:0 auto;
-    border-radius:999px;font-size:16px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.3);background:rgba(255,255,255,.07);
+.ob-btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;height:48px;margin:0 20px;border-radius:999px;font-size:16px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.3);background:rgba(255,255,255,.07);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);will-change:transform;
     pointer-events:none;transition:background .5s ease,color .5s ease,box-shadow .5s ease}
 .ob-btn.on{color:#15111a;background:linear-gradient(180deg,#fbf8f2,#e9e3d8);
@@ -3803,10 +3817,7 @@ to{opacity:1;transform:scale(1)}}
 .ob-bl{position:relative;z-index:1}
 .ob-rp{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(20,16,26,.28),rgba(20,16,26,0) 66%);transform:scale(0);opacity:0;will-change:transform,opacity}
 .ob-ft{margin-top:10px;text-align:center;font-size:10.5px;color:rgba(255,255,255,.3)}
-.ob-od{display:inline-block;width:.34em;height:.34em;margin:0 .08em 0 .06em;border-radius:50%;vertical-align:.1em;
-    background:var(--ne);box-shadow:0 0 6px 1px rgba(var(--nr),.85)}
 
-/* ----- minh hoạ mới (nx) ----- */
 .nx-s{position:absolute;inset:0}
 .nx-s *{box-sizing:border-box}
 .nx-pg{position:absolute;left:40px;top:60px;width:220px;height:256px;border-radius:28px;padding:22px 20px;overflow:hidden;
@@ -3821,7 +3832,6 @@ to{opacity:1;transform:scale(1)}}
 .nx-pill.ok{color:var(--ne);border-color:rgba(var(--nr),.4);background:rgba(var(--nr),.1)}
 .nx-fg,.nx-f3,.nx-f4{position:absolute;border-radius:50%;background:rgba(255,255,255,.2);border:1.5px solid rgba(255,255,255,.5);opacity:0;pointer-events:none}
 
-/* 1: chấm quét sạch trang */
 .nx-dt{position:absolute;left:30px;top:226px;width:10px;height:10px;border-radius:50%;background:var(--ne);box-shadow:0 0 14px 3px rgba(var(--nr),.8);animation:nxPulse 2s ease-in-out infinite}
 @keyframes nxPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}
 .nx-wv{position:absolute;left:15px;top:211px;width:40px;height:40px;border-radius:50%;border:2px solid var(--ne);background:radial-gradient(circle,rgba(var(--nr),.16),transparent 70%);opacity:0;animation:nxWv 6.5s ease-out infinite}
@@ -3833,7 +3843,6 @@ to{opacity:1;transform:scale(1)}}
 .nx-p1{animation:nxP1 6.5s ease-in-out infinite}
 @keyframes nxP1{0%,34%{opacity:0;transform:translate(-50%,8px)}44%,90%{opacity:1;transform:translate(-50%,0)}98%,100%{opacity:0;transform:translate(-50%,0)}}
 
-/* 2: chạm bật / tắt */
 .nx-hw{position:absolute;inset:0;animation:nxOn 6s linear infinite}
 @keyframes nxOn{0%,32%{opacity:1}38%,72%{opacity:0}78%,100%{opacity:1}}
 .nx-halo{position:absolute;left:110px;top:130px;width:80px;height:80px;border-radius:50%;border:1.5px solid rgba(var(--nr),.7);opacity:0;animation:nxHalo 2.4s ease-out infinite}
@@ -3867,7 +3876,6 @@ to{opacity:1;transform:scale(1)}}
 @keyframes nxLa{0%,34%{opacity:1}40%,72%{opacity:0}78%,100%{opacity:1}}
 @keyframes nxLb{0%,34%{opacity:0}40%,72%{opacity:1}78%,100%{opacity:0}}
 
-/* 3: giữ chấm, chấm đỏ nở thành bảng */
 .nx-d3{position:absolute;left:31px;top:217px;width:10px;height:10px;border-radius:50%;background:var(--ne);box-shadow:0 0 12px 3px rgba(var(--nr),.8);animation:nxD3 7s ease-in-out infinite}
 @keyframes nxD3{
 0%,25%{background:var(--ne);box-shadow:0 0 12px 3px rgba(var(--nr),.8);transform:scale(1)}
@@ -3900,7 +3908,6 @@ to{opacity:1;transform:scale(1)}}
 .nx-hp{animation:nxHp 7s ease-in-out infinite}
 @keyframes nxHp{0%,5%{opacity:0}10%,28%{opacity:1}34%,100%{opacity:0}}
 
-/* 4: chọn rồi ẩn phần tử */
 .nx-cw{position:relative;height:74px;overflow:hidden;animation:nxCw 6.5s cubic-bezier(.5,0,.2,1) infinite}
 .nx-cw .nx-ad{margin:8px 0}
 @keyframes nxCw{0%,50%{height:74px;opacity:1}62%,92%{height:0;opacity:0}100%{height:74px;opacity:1}}
@@ -3913,7 +3920,6 @@ to{opacity:1;transform:scale(1)}}
 .nx-t4b{animation:nxT4b 6.5s ease-in-out infinite}
 @keyframes nxT4b{0%,60%{opacity:0;transform:translate(-50%,8px)}68%,92%{opacity:1;transform:translate(-50%,0)}98%,100%{opacity:0;transform:translate(-50%,0)}}
 
-/* 5: càng dùng càng sạch */
 .nx-mn{position:absolute;top:100px;width:58px;height:156px;border-radius:16px;padding:10px 8px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);
     box-shadow:0 14px 30px rgba(0,0,0,.35);opacity:0;animation:nxMn 6.5s ease-out infinite;animation-delay:calc(var(--i) * .22s)}
 @keyframes nxMn{0%{opacity:0;transform:translateY(16px)}10%,86%{opacity:1;transform:none}94%,100%{opacity:0;transform:translateY(-8px)}}
@@ -3984,10 +3990,7 @@ to{opacity:1;transform:scale(1)}}
             const release = () => {
                 if (!press) return;
                 press.cancel(); press = null;
-                btn.animate([
-                    { transform: SQUASH },
-                    { transform: 'scale(1,1)' }
-                ], { duration: RM ? 1 : 220, easing: 'ease-out' });
+                btn.animate([{ transform: SQUASH }, { transform: 'scale(1,1)' }], { duration: RM ? 1 : 220, easing: 'ease-out' });
             };
             ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => bind(btn, t, release));
 

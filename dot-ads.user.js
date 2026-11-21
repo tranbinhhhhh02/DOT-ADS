@@ -1,8 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.4
-// @description  Chặn quảng cáo với một chạm.
+// @version      2.5
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -25,7 +24,6 @@
     const CONFIG = {
         allow: ['microsoft.com', 'windows.com', 'windowsupdate.com', 'wikipedia.org','facebook.com','messenger.com','instagram.com','youtube.com'],
         names: ['smartbanner', 'app-banner', 'cookie-popup', '*adsbygoogle*'],
-        texts: ['Tải ứng dụng', 'Quảng cáo'],
         hosts: [],
         links: ['tinyurl', 'bit.ly', 'cutt.ly', 'shorturl', 'bet', 'win', '88', '789', 'nhacai', 'casino', 'jackpot'],
         appAllow: [],
@@ -179,7 +177,8 @@
     const ATTR = 'data-gdar', INV_ATTR = 'data-gdar-inv', PICK_ATTR = 'data-gdar-pick', PRESS_ATTR = 'data-gdar-press';
     const LNK_ATTR = 'data-gdar-lk', TOUCH_ATTR = 'data-gdar-t', LNK_HREF = 'data-gdar-href', GUARD_ATTR = 'data-gdar-g';
     const Q_ATTR = 'data-gdar-q', MARK = 'data-gdar-m', OK_ATTR = 'data-gdar-ok', PA_ATTR = 'data-gdar-pa', PICKED_ATTR = 'data-gdar-picked';
-    const DECIDE_MS = 300, GUARD_MS = 20000, WATCH_MS = 3000, INV_SCAN_MS = 40, MEDIA_SWEEP_MS = 50, LEARN_MAX = 40;
+    /* INV_SCAN_MS / MEDIA_SWEEP_MS: quét mỗi khung hình để chặn gần như tức thì; INV_NEG_MS: khoảng cách tối thiểu giữa 2 lần "không phải overlay" */
+    const DECIDE_MS = 300, GUARD_MS = 20000, WATCH_MS = 3000, INV_SCAN_MS = 16, INV_NEG_MS = 40, MEDIA_SWEEP_MS = 16, PLAYER_TICK_MS = 20, LEARN_MAX = 40;
     const AUTO_WORDS = ['ad', 'ads', 'adv', 'popup', 'banner', 'app-download', 'float-ad', 'float-ads', 'floating-ad', 'float-banner', 'floating-banner'];
     const NAME_RE = /^\*?[\w-]+\*?$/;
     const INV_SEL = 'a[href],area[href],iframe';
@@ -202,7 +201,6 @@
 
     const AD_PLAYER = '.jwplayer.jw-flag-ads,.jwplayer.jw-flag-ads-vpaid,.jwplayer.jw-flag-ads-googleima,.video-js.vjs-ad-playing,.video-js.vjs-ad-loading,[class*="ad-playing" i],[class*="ad-showing" i]';
     const AD_SKIP_SEL = '.jw-skip,.jw-skippable,.videoAdUiSkipButton,.ima-skip-button,.vjs-skip-button,[class*="skip-ad" i],[class*="ad-skip" i],[class*="skipad" i],[class*="skip-button" i]';
-    const SKIP_TXT = /^\s*(bỏ qua|skip)(\s+(quảng cáo|qc|ad|ads|advertisement))?\s*[›»>▶⏭]*\s*$/i;
 
     const HAS = (() => { try { document.createDocumentFragment().querySelector(':has(a)'); return true; } catch (e) { return false; } })();
 
@@ -876,7 +874,6 @@
     const AD_SRC_SEL = 'iframe[src],embed[src],object[data],script[src],img[src],video[src],audio[src],source[src]';
     const adSrcBad = u => { if (!set.on || !u) return false; if (appUrl(u)) return true; const o = parseExt(u); return !!o && adHost(o, false); };
 
-    /* Quảng cáo video trong player: không gỡ phần tử (player sẽ treo), chỉ tắt tiếng, tua tới cuối rồi báo "ended". */
     function finishAdMedia(m) {
         tryQ(() => {
             m.setAttribute(MARK, '');
@@ -1650,7 +1647,6 @@
         });
         return b;
     }
-    /* p: khung player; btn: nút "Bỏ qua" tìm theo chữ (chế độ generic, chỉ động vào video ngắn như quảng cáo) */
     function skipAdIn(p, btn) {
         if (!p || p.nodeType !== 1 || inHostNode(p)) return;
         const generic = !!btn;
@@ -1724,7 +1720,7 @@
         restoreAdPlayers();
     }
     if (PLAYER_ADS) {
-        every(40, playerAdTick);
+        every(PLAYER_TICK_MS, playerAdTick);
         ['loadedmetadata', 'durationchange', 'playing', 'play'].forEach(t =>
             window.addEventListener(t, e => {
                 if (!set.on) return;
@@ -1736,7 +1732,7 @@
             }, true));
     }
 
-    const invQ = new Set(), invStrike = new WeakMap(), invNeg = new WeakMap();
+    const invQ = new Set(), invNeg = new WeakMap();
 
     const alphaZero = c => !c || c === 'transparent' || /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(\.0+)?\s*\)$/.test(c);
     const effOpacity = el => {
@@ -1791,19 +1787,14 @@
         return (plain(cs) && plain(bcs)) ? box : null;
     }
 
-    function invCheck(el, now) {
+    /* Chặn ngay khi phát hiện: không còn đếm "strike" chờ vài vòng quét như trước. */
+    function invCheck(el) {
         if (!el || el.nodeType !== 1 || el.hasAttribute(INV_ATTR) || inHostNode(el)) return 'no';
         const t = tryQ(() => invTarget(el), null);
-        if (!t) { invStrike.delete(el); return 'no'; }
-        if (isPlayerish(t)) { invStrike.delete(el); return 'no'; }
-        const fr = el.tagName === 'IFRAME';
-        if (!now) {
-            const n = (invStrike.get(el) || 0) + 1;
-            invStrike.set(el, n);
-            if (n < (fr ? 3 : 2)) return 'wait';
-        }
-        kill(t, true);
+        if (!t) return 'no';
+        if (isPlayerish(t)) return 'no';
         t.setAttribute(INV_ATTR, '');
+        kill(t, true);
         return 'hit';
     }
 
@@ -1815,15 +1806,18 @@
     const invScan = () => {
         if (!set.on || !document.body || !invQ.size) return;
         let n = 0;
+        const now = Date.now();
         for (const el of invQ) {
             if (!el.isConnected || el.hasAttribute(INV_ATTR)) { invQ.delete(el); continue; }
             if (++n > 80) break;
-            const r = invCheck(el, guardOn());
+            const r = invCheck(el);
             if (r === 'hit') invQ.delete(el);
             else if (r === 'no') {
-                const c = (invNeg.get(el) || 0) + 1;
-                invNeg.set(el, c);
-                if (c >= 3) invQ.delete(el);
+                /* phần tử chưa thành overlay (CSS/layout chưa xong) vẫn được theo dõi: chỉ tính 1 lần "không" mỗi INV_NEG_MS */
+                const o = invNeg.get(el) || { c: 0, t: 0 };
+                if (now - o.t >= INV_NEG_MS) { o.c++; o.t = now; }
+                invNeg.set(el, o);
+                if (o.c >= 3) invQ.delete(el);
             }
         }
     };
@@ -1850,9 +1844,9 @@
         try { list = document.elementsFromPoint(x, y).slice(0, 8); } catch (err) { return; }
         for (const el of list) {
             const c = el.closest && el.closest(INV_SEL);
-            if (c) invCheck(c, true);
+            if (c) invCheck(c);
             const g = tryQ(() => ghostOverlay(el), null);
-            if (g) { kill(g, true); tryQ(() => g.setAttribute(INV_ATTR, '')); }
+            if (g) { tryQ(() => g.setAttribute(INV_ATTR, '')); kill(g, true); }
         }
     };
     window.addEventListener('pointerdown', e => { if (set.on) ghostSweep(e.clientX, e.clientY); }, true);
@@ -1903,17 +1897,18 @@
         const s = el.tagName.toLowerCase() + c;
         return tryQ(() => document.querySelectorAll(s).length <= 3 ? s : '', '');
     }
+    /* Gỡ popup ngay, việc "nhớ" selector (ghi bộ nhớ, dựng lại CSS) làm sau để không làm chậm lúc chặn. */
     function popup(el) {
         if (isPlayerish(el)) return;
         const s = popSel(el);
+        kill(el, true);
+        unlockScroll();
         if (s && !learn.p.includes(s)) {
             learn.p.push(s);
             if (learn.p.length > LEARN_MAX) learn.p.shift();
             learnWrite();
             buildCss();
         }
-        kill(el, true);
-        unlockScroll();
         if (uiReady) render();
     }
 
@@ -1946,7 +1941,7 @@
     const release = el => { el.removeAttribute(Q_ATTR); el.setAttribute(OK_ATTR, ''); };
     function freshCheck(el) {
         if (!set.on || !el.isConnected || inHostNode(el)) return;
-        if (el.matches(INV_SEL) && invCheck(el, true) === 'hit') return;
+        if (el.matches(INV_SEL) && invCheck(el) === 'hit') return;
         if (!set.pop || !guardOn() || el.hasAttribute(ATTR)) return;
         if (ANTI && isPlayerish(el)) { release(el); return; }
         const st = stateOf(el);
@@ -2067,10 +2062,10 @@
     }
 
     const learned = new WeakSet();
-    function learnAdd(el, k) {
-        if (!k || !set.on) return;
-        const s = stableSel(el);
-        if (!s || learn.l.some(x => x.s === s && x.k === k)) return;
+    /* lưu selector đã tính sẵn (tính trước khi gỡ phần tử, ghi sau khi đã gỡ) */
+    function learnCommit(s, k) {
+        if (!s || !k || !set.on) return;
+        if (learn.l.some(x => x.s === s && x.k === k)) return;
         learn.l.push({ s, k });
         if (learn.l.length > LEARN_MAX) learn.l.shift();
         learnWrite();
@@ -2080,8 +2075,10 @@
     function hideText(p, len, k) {
         const t = climb(p, len);
         if (isPlayerish(t)) return t;
-        if (!learned.has(t)) { learned.add(t); learnAdd(t, k); }
+        let s = '';
+        if (!learned.has(t)) { learned.add(t); if (k && set.on) s = stableSel(t); }
         kill(t);
+        if (s) learnCommit(s, k);
         return t;
     }
 
@@ -2341,6 +2338,7 @@
             tag: el.tagName.toLowerCase(), id: el.id || '', cls: clsOf(el), name: el.getAttribute('name') || '',
             sel: selOf(host), href: hrefV,
             src: (srcEl && (srcEl.currentSrc || srcEl.getAttribute('src'))) || '',
+            text: tryQ(() => String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 600), ''),
             hideSel: '', host: location.hostname, shadow: shadow ? host.tagName.toLowerCase() : ''
         };
         const ho = parseExt(hrefV), so = parseExt(info.src);
@@ -2429,15 +2427,15 @@
                 if (ix >= 0) site.sel.splice(ix, 1);
                 site.sel.push(s);
             });
-            siteWrite();
             applyRules();
+            siteWrite();
             if (uiReady) render();
         } else if (c === 'blk' && PK.info && PK.info.blkHost) {
             const ix = site.lnk.indexOf(PK.info.blkHost);
             if (ix >= 0) site.lnk.splice(ix, 1);
             site.lnk.push(PK.info.blkHost);
-            siteWrite();
             applyRules();
+            siteWrite();
             if (uiReady) render();
         }
     }
@@ -2526,6 +2524,37 @@
             calloutRestore();
         };
 
+        /* Phân biệt "chọn chữ" và "nhấn giữ chọn phần tử":
+           - nhấn vào ô nhập hoặc đúng lên chữ có thể bôi chọn (không nằm trong link/nút/ảnh) -> để trình duyệt xử lý (chọn / sao chép)
+           - nhấn vào ảnh, video, link, nút, lớp phủ, khoảng trống... -> nhấn giữ để chọn phần tử như cũ */
+        const FIELD_SEL = 'input,textarea,select,[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"]';
+        const ACTIVE_SEL = 'a[href],button,[role=button],summary,label,img,video,audio,canvas,svg,picture,iframe,object,embed';
+        const selectableAt = (win, x, y, t) => tryQ(() => {
+            if (!t || t.nodeType !== 1) return false;
+            if (t.closest(FIELD_SEL)) return true;
+            if (t.closest(ACTIVE_SEL)) return false;
+            const d = win.document;
+            let n = null;
+            if (typeof d.caretPositionFromPoint === 'function') {
+                const p = d.caretPositionFromPoint(x, y);
+                n = p && p.offsetNode;
+            } else if (typeof d.caretRangeFromPoint === 'function') {
+                const r = d.caretRangeFromPoint(x, y);
+                n = r && r.startContainer;
+            }
+            if (!n || n.nodeType !== 3 || !(n.nodeValue || '').trim()) return false;
+            const pe = n.parentElement;
+            if (!pe || inHostNode(pe) || pe.closest(ACTIVE_SEL)) return false;
+            const cs = win.getComputedStyle(pe);
+            if ((cs.webkitUserSelect || cs.userSelect) === 'none') return false;
+            const rg = d.createRange();
+            rg.selectNodeContents(n);
+            for (const q of rg.getClientRects()) {
+                if (x >= q.left - 3 && x <= q.right + 3 && y >= q.top - 3 && y <= q.bottom + 3) return true;
+            }
+            return false;
+        }, false);
+
         const wire = win => {
             let h = wireCache.get(win);
             if (!h) {
@@ -2547,6 +2576,8 @@
                     if (e.pointerType === 'mouse' && e.button !== 0) return;
                     pTarget = deepTarget(e);
                     if (!pTarget || pTarget.nodeType !== 1 || inHostNode(pTarget)) return;
+                    /* nhấn lên chữ / ô nhập: bỏ qua, để chọn chữ và sao chép hoạt động bình thường */
+                    if (selectableAt(win, e.clientX, e.clientY, pTarget)) { stopPress(); return; }
                     pWin = win;
                     sx = e.clientX; sy = e.clientY;
                     pressing = true;
@@ -2743,10 +2774,10 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
             const t = tryQ(() => document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), null);
             if (!t || t === host) return;
             if (TL) promote();
-            else { const c = t.closest && t.closest(INV_SEL); if (c) invCheck(c, true); }
+            else { const c = t.closest && t.closest(INV_SEL); if (c) invCheck(c); }
         });
 
-        const PH = { sel: 'smartbanner hoặc .banner, #popup', txt: 'Quảng cáo, tải ứng dụng', lnk: 'Dán URL quảng cáo, tinyurl, bet hoặc appname://' };
+        const PH = { sel: 'smartbanner hoặc .banner, #popup', txt: , lnk:  };
         const PH_BULK = {
             sel: 'Mỗi mục cách nhau bằng ; hoặc xuống dòng',
             txt: 'Mỗi từ khoá cách nhau bằng ; hoặc xuống dòng',
@@ -2776,13 +2807,12 @@ label{display:flex;-webkit-tap-highlight-color:transparent}
         let renderSheet = () => {}, closeInfo = () => {}, showInfoImpl = () => {};
 
         const ROWS_A = [
-            ['g-on', 'on', 'Chặn quảng cáo', 'Xoá quảng cáo, tắt tiếng, chặn link ẩn'],
             ['g-auto', 'auto', 'Tự động chặn', 'Ẩn ads, popup, banner, float'],
             ['g-pop', 'pop', 'Popup, tab lạ &amp; khung chứa', 'Chặn lớp phủ, tab tự mở, ẩn cả khung &amp; viền nút'],
             ['g-links', 'links', 'Chặn chuyển hướng ngoài', '', 'g-lnk-s']
         ];
         const ROW_PICK = ['g-pick', 'pick', 'Nhấn giữ xem phần tử',
-            `Giữ ${(PICK_MS / 1000).toFixed(2).replace(/0$/, '').replace('.', ',')}s để xem phần tử`];
+            `Giữ ${(PICK_MS / 1000).toFixed(2).replace(/0$/, '').replace('.', ',')}s lên ảnh, link, lớp phủ.`];
         const ROW_RND = ['g-rnd', 'rnd', 'Màu chấm ngẫu nhiên', 'Không liên quan, nhưng thêm vô cho đẹp •ᴗ•'];
         const SW_KEYS = [...ROWS_A, ROW_PICK, ROW_RND].map(r => [r[0], r[1]]);
 
@@ -3049,6 +3079,7 @@ label,.g-set,.g-sw,.g-sw input,button,input[type=checkbox]{-webkit-tap-highlight
 .g-scroll{position:relative;flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:44px 16px calc(16px + env(safe-area-inset-bottom,0px));will-change:opacity}
 *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}
 input[type=text],textarea{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}
+.g-info code{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}
 .g-close,.g-add,.g-chip button,.g-tab,.g-cp,.g-act,.g-bulk-btn{display:var(--ctl);align-items:center;justify-content:var(--ctr)}
 .g-close,.g-chip button,.g-cp,.g-bulk-btn.sec,.g-act{background:var(--w12)}
 .g-add,.g-bulk-btn,.g-cp.ok,.g-act.ok,.g-act.pri{background:var(--ac);color:var(--ink)}
@@ -3267,7 +3298,7 @@ to{opacity:1;transform:scale(1)}}
 
             renderSheet = function () {
                 SW_KEYS.forEach(([id, k]) => { $(id).checked = !!set[k]; });
-                $('g-lnk-s').textContent = 'Chặn tên miền lạ, URL quảng cáo và mở app' + (lnkBlocked ? ' · đã chặn ' + lnkBlocked : '');
+                $('g-lnk-s').textContent =  + (lnkBlocked ? ' · đã chặn ' + lnkBlocked : '');
                 const nLearn = learnActive();
                 $('g-learn-s').textContent = nLearn ? 'Đã nhớ ' + nLearn + ' mục, ẩn ngay khi tải' : 'Nhớ khung và popup cho lần sau';
                 $('g-learn-s').classList.toggle('on', nLearn > 0);
@@ -3300,7 +3331,7 @@ to{opacity:1;transform:scale(1)}}
                     const b = document.createElement('button');
                     b.setAttribute('aria-label', 'Xoá');
                     b.innerHTML = ic('x', 10);
-                    bind(b, 'click', () => { arr.splice(i, 1); saveCur(); render(); applyRules(); });
+                    bind(b, 'click', () => { arr.splice(i, 1); applyRules(); render(); saveCur(); });
                     chip.append(s, b);
                     list.appendChild(chip);
                 });
@@ -3317,7 +3348,8 @@ to{opacity:1;transform:scale(1)}}
                     arr.push(v);
                     added++;
                 });
-                if (added || dup) { saveCur(); render(); applyRules(); }
+                /* áp dụng chặn trước, ghi lưu trữ sau */
+                if (added || dup) { applyRules(); render(); saveCur(); }
                 return { total: items.length, added, dup, bad };
             }
             const summary = r => [r.added && `Đã thêm ${r.added}`, r.dup && `${r.dup} trùng (đưa xuống cuối)`, r.bad && `${r.bad} không hợp lệ`].filter(Boolean).join(' · ');
@@ -3446,15 +3478,15 @@ to{opacity:1;transform:scale(1)}}
             const AFTER = {
                 on: () => { render(); applyRules(); },
                 auto: applyRules,
-                pop: () => { learn.l = []; learnWrite(); applyRules(); render(); },
+                pop: () => { learn.l = []; applyRules(); render(); learnWrite(); },
                 links: () => { applyRules(); render(); },
                 pick: applyPick,
                 rnd: applyColor
             };
             SW_KEYS.forEach(([id, k]) => {
-                $(id).onchange = e => { set[k] = e.target.checked; gWrite('settings', set); AFTER[k](); };
+                $(id).onchange = e => { set[k] = e.target.checked; AFTER[k](); gWrite('settings', set); };
             });
-            bind($('g-learn-clr'), 'click', () => { learn.l = []; learn.p = []; learnWrite(); applyRules(); render(); });
+            bind($('g-learn-clr'), 'click', () => { learn.l = []; learn.p = []; applyRules(); render(); learnWrite(); });
             bind($('g-scope'), 'click', () => {
                 const names = ['all', 'site', ...Object.keys(frameRules).map(h => 'f:' + h)];
                 const i = names.indexOf(scope);
@@ -3481,6 +3513,7 @@ to{opacity:1;transform:scale(1)}}
                 $('g-sub2').textContent = '<' + info.tag + '>' + (info.host && info.host !== HOST ? ' · ' + info.host : '');
 
                 const rows = [['ID', info.id], ['Class', info.cls], ['Name', info.name],
+                    ['Văn bản', info.text],
                     ['Selector', info.sel], ['Href', info.href], ['Src', info.src],
                     ['Shadow DOM', info.shadow ? 'Ẩn qua phần tử chủ <' + info.shadow + '>' : ''],
                     ['Khung nhúng', info.host && info.host !== HOST ? info.host : ''],
@@ -3529,6 +3562,7 @@ to{opacity:1;transform:scale(1)}}
                 if (!pickedInfo) return;
                 const p = pickedInfo;
                 const txt = [`tag: ${p.tag}`, p.id && `id: ${p.id}`, p.cls && `class: ${p.cls}`, p.name && `name: ${p.name}`,
+                    p.text && `text: ${p.text}`,
                     `selector: ${p.sel}`, p.href && `href: ${p.href}`, p.src && `src: ${p.src}`,
                     p.host !== HOST && `frame: ${p.host}`].filter(Boolean).join('\n');
                 flash(tg.closest('button') || $('g-copyall'), await copyText(txt), idleAll);
@@ -3589,9 +3623,10 @@ to{opacity:1;transform:scale(1)}}
             cancel();
             if (was && !opened) {
                 set.on = !set.on;
-                gWrite('settings', set);
+                /* bật/tắt có hiệu lực ngay, ghi lưu trữ sau */
                 render();
                 applyRules();
+                gWrite('settings', set);
             }
         });
         bind(dot, 'pointercancel', cancel);
@@ -3728,10 +3763,8 @@ to{opacity:1;transform:scale(1)}}
                     t: 'Một dấu chấm, trang web sạch bóng',
                     s: 'Dot Ads lặng lẽ quét sạch banner, popup và tab lạ ngay khi trang vừa tải.',
                     v: () => '<div class="nx-s"><div class="nx-pg">' + L(46) + L(82) +
-                        '<div class="nx-ad nx-a1"><em>Quảng cáo</em></div>' + L(70) + L(88) +
                         '<div class="nx-ad sm nx-a2"><em>Banner</em></div>' + L(60) +
                         '<i class="nx-wv"></i><i class="nx-dt"></i></div>' +
-                        pill('ok nx-p1', okTxt('Đã chặn 2 quảng cáo')) + '</div>'
                 },
                 {
                     t: 'Chạm một cái, bật hay tắt',
@@ -3753,15 +3786,12 @@ to{opacity:1;transform:scale(1)}}
                 },
                 {
                     t: 'Thấy phiền là ẩn',
-                    s: 'Nhấn giữ bất kỳ phần tử nào trên trang, xem chi tiết rồi ẩn hoặc chặn luôn link quảng cáo của nó.',
                     v: () => '<div class="nx-s"><div class="nx-pg">' + L(48) + L(84) +
-                        '<div class="nx-cw"><div class="nx-ad"><em>Quảng cáo</em></div><i class="nx-sel"></i></div>' +
                         L(72) + L(90) + L(56) + '<div class="nx-f4"></div></div>' +
                         pill('nx-t4a', 'div.banner') + pill('ok nx-t4b', okTxt('Đã ẩn phần tử')) + '</div>'
                 },
                 {
                     t: 'Càng dùng, càng sạch',
-                    s: 'Dot Ads tự nhớ khung quảng cáo và popup, lần tải sau chặn ngay từ đầu, không kịp hiện.',
                     v: () => '<div class="nx-s">' + [44, 30, 16, 0].map((h, i) =>
                         `<div class="nx-mn" style="left:${16 + i * 70}px;--i:${i}"><i class="nx-bar"></i>` +
                         (h ? `<div class="nx-mad" style="height:${h}px"></div>` : `<div class="nx-ok">${ic('shield', 18)}</div>`) +
@@ -3945,7 +3975,6 @@ to{opacity:1;transform:scale(1)}}
                     <div class="ob-txt"><div class="ob-t"></div><div class="ob-s"></div></div>
                     <div class="ob-dots">${PAGES.map(() => '<i><b></b></i>').join('')}</div>
                     <button class="ob-btn"><span class="ob-bl">Tiếp tục</span></button>
-                    <div class="ob-ft">Dot Ads · Chặn quảng cáo với một chạm</div>
                 </div>`;
             root.appendChild(el);
             obEl = el;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.5
+// @version      2.6
 // @description  Chặn quảng cáo với một chạm.
 // @match        *://*/*
 // @grant        GM_getValue
@@ -469,7 +469,7 @@
     const shieldOn = () => set.on;
     let uiReady = false, hostEl = null, dotEl = null;
     let promote = () => {}, render = () => {};
-    let keys = [], lkeys = [], lastRules = null;
+    let keys = [], lkeys = [], qcKeys = [], lastRules = null;
     let lnkBlocked = 0, budget = 0;
 
     const pickOn = () => !!(set.on && set.pick);
@@ -645,11 +645,13 @@
     const calcKeys = () => {
         keys = [...BUILTIN_TXT, ...glb.txt, ...site.txt].map(t => t.toLowerCase());
         lkeys = [...(CONFIG.links || []), ...glb.lnk, ...site.lnk].map(t => String(t).trim().toLowerCase()).filter(Boolean);
+        qcKeys = lkeys.filter(k => k.indexOf('/') >= 0 && k.indexOf('://') < 0);
         const res = [...(CONFIG.hosts || []).map(h => h.toLowerCase()), ...lkeys.filter(k => /[.\/]/.test(k))];
         lastRules = {
             on: shieldOn(), keys: set.links ? lkeys : [], res, pop: !!set.pop, ovl: !!set.pop,
             apps: !!set.links, appAllow: APP_ALLOW, ab: ANTI, pa: PLAYER_ADS,
-            allow: (CONFIG.allow || []).map(x => String(x).toLowerCase()), kill: killSel
+            allow: (CONFIG.allow || []).map(x => String(x).toLowerCase()), kill: killSel,
+            qc: qcKeys
         };
         publishRules();
     };
@@ -1053,6 +1055,17 @@
             if (same(h) || allowedH(h)) return false;
             return !!((r.res && r.res.length && hit(o, r.res)) || susOf(o, false));
         };
+        /* Chặn lớp QC: URL media nằm trong danh sách Liên kết được xử lý bằng cách tua qua, không chặn tải để player không bị treo. */
+        const qcHit = u => {
+            const r = rules();
+            if (!r || !r.on || !r.qc || !r.qc.length || u == null) return false;
+            const o = parse(u);
+            if (!o) return false;
+            const full = o.hostname.toLowerCase().replace(/^www\./, '') + o.pathname.toLowerCase() + o.search.toLowerCase();
+            return r.qc.some(k => full.includes(k));
+        };
+        const MEDIA_URL = /\.(m3u8|mpd|mp4|m4v|webm|mov|ts|m4s|aac|mp3|m4a)$/i;
+        const qcMedia = u => qcHit(u) && MEDIA_URL.test(String(u).split(/[?#]/)[0]);
         const locked = ms => {
             const r = rules(), e = D.documentElement;
             return !!(r && r.on) && Date.now() - (+(e && e.getAttribute('data-gdar-t')) || 0) < (ms || 3000);
@@ -1270,7 +1283,8 @@
         W.Element.prototype.setAttribute = mask(function (n, v) {
             if (WATCH[this.tagName] && typeof n === 'string') {
                 const l = n.toLowerCase();
-                if ((l === 'src' || l === 'href' || l === 'data') && badRes(v)) { blockEl(this); return; }
+                if ((l === 'src' || l === 'href' || l === 'data') && badRes(v) &&
+                    !((this.tagName === 'VIDEO' || this.tagName === 'AUDIO' || this.tagName === 'SOURCE') && qcHit(v))) { blockEl(this); return; }
                 if (l === 'src' && (this.tagName === 'VIDEO' || this.tagName === 'AUDIO') && isAdMedia(this)) return;
             }
             return sa.apply(this, arguments);
@@ -1284,7 +1298,8 @@
          ['HTMLLinkElement', 'href'], ['HTMLSourceElement', 'src'], ['HTMLEmbedElement', 'src'],
          ['HTMLObjectElement', 'data'], ['HTMLMediaElement', 'src']].forEach(x => {
             const C = W[x[0]];
-            defSet(C && C.prototype, x[1], d => function (v) { if (badRes(v)) { blockEl(this); return; } return d.set.call(this, v); });
+            const isMedia = x[0] === 'HTMLMediaElement' || x[0] === 'HTMLSourceElement';
+            defSet(C && C.prototype, x[1], d => function (v) { if (badRes(v) && !(isMedia && qcHit(v))) { blockEl(this); return; } return d.set.call(this, v); });
         });
 
         const MP = W.HTMLMediaElement && W.HTMLMediaElement.prototype;
@@ -1296,7 +1311,7 @@
                 if (!r || !r.on || !m) return false;
                 if (m.hasAttribute('data-gdar-m')) return true;
                 const s = m.getAttribute('src') || m.currentSrc || '';
-                if (s && badRes(s)) return true;
+                if (s && badRes(s) && !qcHit(s)) return true;
                 if (m.isConnected) {
                     if (m.closest('[data-gdar],[data-gdar-inv]')) return true;
                     if (m.closest('.jwplayer,.video-js,.plyr,.art-video-player,.dplayer,.fp-player,.flowplayer,.mejs__container,.shaka-video-container,.oplayer,[class*="player" i],[id*="player" i]')) return false;
@@ -1331,7 +1346,7 @@
                 const A = function (s) {
                     const a = new A0();
                     if (s != null) {
-                        if (badRes(s)) { try { sa.call(a, 'data-gdar-m', ''); } catch (e) {} }
+                        if (badRes(s) && !qcHit(s)) { try { sa.call(a, 'data-gdar-m', ''); } catch (e) {} }
                         else a.src = s;
                     }
                     return a;
@@ -1359,7 +1374,7 @@
         const f0 = W.fetch;
         if (f0) W.fetch = mask(function (i, init) {
             const u = i && i.url ? i.url : i;
-            if (badRes(u)) {
+            if (badRes(u) && !qcMedia(u)) {
                 const r = fakeResp(i, init);
                 if (r) return W.Promise.resolve(r);
             }
@@ -1368,7 +1383,7 @@
         const xo = W.XMLHttpRequest && W.XMLHttpRequest.prototype.open;
         if (xo) W.XMLHttpRequest.prototype.open = mask(function () {
             const a = [].slice.call(arguments);
-            if (badRes(a[1])) a[1] = VAST_RE.test(String(a[1])) ? 'data:text/xml;charset=utf-8,' + encodeURIComponent(VAST_XML) : 'data:application/json,%7B%7D';
+            if (badRes(a[1]) && !qcMedia(a[1])) a[1] = VAST_RE.test(String(a[1])) ? 'data:text/xml;charset=utf-8,' + encodeURIComponent(VAST_XML) : 'data:application/json,%7B%7D';
             return xo.apply(this, a);
         }, xo);
         const sb = W.Navigator && W.Navigator.prototype.sendBeacon;
@@ -1735,6 +1750,123 @@
                 else skipBtnTick();
             }, true));
     }
+
+    /* ---------- Chặn lớp QC ----------
+       Video quảng cáo nằm ngay trong trình phát (cùng host với trang) có URL nằm trong tab Liên kết:
+       không gỡ phần tử, chỉ tắt tiếng, tua tới cuối và bấm "Bỏ qua" để player tự chuyển sang phim thật.
+       Khi nguồn đổi sang video khác thì trả lại tiếng/tốc độ như cũ và bấm play để tự phát. */
+    const qcRec = new WeakMap(), qcActive = new Set();
+    let lastQcSkip = 0;
+    const QC_SKIP = /^\s*(bỏ qua|skip)(\s+(sau|in)\s*\d+\s*(s|giây)?)?(\s+(quảng cáo|qc|ad|ads))?\s*[›»>▶⏭]*\s*$/i;
+    const mediaUrl = m => tryQ(() => {
+        if (m.getAttribute('src')) return m.src;
+        if (m.currentSrc) return m.currentSrc;
+        const sc = m.querySelector && m.querySelector('source[src]');
+        return sc ? sc.src : '';
+    }, '');
+    const qcHit = u => {
+        if (!set.on || !qcKeys.length || !u) return false;
+        let o;
+        try { o = new URL(String(u), location.href); } catch (e) { return false; }
+        if (!/^https?:$/.test(o.protocol)) return false;
+        const full = o.hostname.toLowerCase().replace(/^www\./, '') + o.pathname.toLowerCase() + o.search.toLowerCase();
+        return qcKeys.some(k => full.includes(k));
+    };
+    function qcSkipBtn(m) {
+        let box = m, found = null;
+        for (let i = 0; i < 5 && !found; i++) {
+            box = box.parentElement;
+            if (!box || box === document.body || box === document.documentElement) break;
+            tryQ(() => {
+                let n = 0;
+                for (const e of box.querySelectorAll('button,[role=button],a,div,span')) {
+                    if (++n > 200) break;
+                    if (e.children.length > 3 || inHostNode(e)) continue;
+                    const t = (e.textContent || '').trim();
+                    if (t && t.length <= 24 && QC_SKIP.test(t)) { found = e; break; }
+                }
+            });
+        }
+        return found;
+    }
+    function qcResume(m) {
+        [60, 300, 800, 1600].forEach(ms => setTimeout(() => tryQ(() => {
+            if (!m.isConnected || !m.paused || m.ended || qcRec.has(m)) return;
+            const s = mediaUrl(m);
+            if (!s || qcHit(s)) return;
+            const r = m.play();
+            if (r && r.catch) r.catch(() => tryQ(() => {
+                if (!m.muted) {
+                    m.muted = true;
+                    const r2 = m.play();
+                    if (r2 && r2.catch) r2.catch(() => {});
+                }
+            }));
+        }), ms));
+    }
+    function qcLeave(m, rec) {
+        qcRec.delete(m);
+        qcActive.delete(m);
+        tryQ(() => {
+            if (rec.mm && m.muted) m.muted = false;
+            if (rec.vv != null && m.volume === 0) m.volume = rec.vv;
+            if (rec.rr != null && m.playbackRate === 16) m.playbackRate = rec.rr;
+        });
+        if (m.isConnected && set.on) qcResume(m);
+    }
+    function qcCheck(m) {
+        if (!m || m.nodeType !== 1 || inHostNode(m)) return;
+        const rec0 = qcRec.get(m);
+        if (!rec0 && !qcKeys.length) return;
+        const s = mediaUrl(m);
+        if (!(set.on && qcKeys.length && s && qcHit(s))) {
+            if (rec0) qcLeave(m, rec0);
+            return;
+        }
+        const now = Date.now();
+        let rec = rec0;
+        if (!rec) {
+            rec = { src: s, t0: now, fired: false, mm: 0, vv: null, rr: null };
+            qcRec.set(m, rec);
+            qcActive.add(m);
+        } else if (rec.src !== s) {
+            rec.src = s; rec.t0 = now; rec.fired = false;
+        }
+        tryQ(() => {
+            if (!m.muted) { rec.mm = 1; m.muted = true; }
+            if (m.volume > 0) { if (rec.vv == null) rec.vv = m.volume; m.volume = 0; }
+            if (m.playbackRate !== 16) { if (rec.rr == null) rec.rr = m.playbackRate; m.playbackRate = 16; }
+        });
+        tryQ(() => {
+            const d = m.duration;
+            if (d && isFinite(d) && d > 0.2 && m.currentTime < d - 0.3) m.currentTime = Math.max(0, d - 0.1);
+            if (m.paused && !m.ended) { const r = m.play(); if (r && r.catch) r.catch(() => {}); }
+            if (!m.ended && !rec.fired && now - rec.t0 > 1500) {
+                rec.fired = true;
+                m.dispatchEvent(new Event('timeupdate'));
+                m.dispatchEvent(new Event('ended'));
+            }
+        });
+        if (now - rec.t0 > 200 && now - lastQcSkip > 200) {
+            lastQcSkip = now;
+            const b = qcSkipBtn(m);
+            if (b) { synthClick(b); tryQ(() => b.click()); }
+        }
+    }
+    function qcTick() {
+        if (!qcKeys.length && !qcActive.size) return;
+        qcActive.forEach(m => {
+            if (!m.isConnected) { qcActive.delete(m); qcRec.delete(m); }
+            else if (!set.on || !qcKeys.length) qcCheck(m);
+        });
+        if (set.on && qcKeys.length) tryQ(() => document.querySelectorAll(MEDIA_SEL).forEach(qcCheck));
+    }
+    ['loadstart', 'loadedmetadata', 'durationchange', 'canplay', 'play', 'playing'].forEach(t =>
+        window.addEventListener(t, e => {
+            const m = e.target;
+            if (m && m.nodeType === 1 && (m.tagName === 'VIDEO' || m.tagName === 'AUDIO')) qcCheck(m);
+        }, true));
+    every(40, qcTick, true);
 
     const invQ = new Set(), invStrike = new WeakMap(), invNeg = new WeakMap();
 
@@ -2339,11 +2471,16 @@
         const link = el.closest ? el.closest('a[href]') : null;
         const hrefV = (link && link.getAttribute('href')) || '';
         const srcEl = el.matches('img,video,iframe,source,audio,embed') ? el : el.querySelector('img,video,iframe,source');
+        /* nguồn media (video/audio) để dùng cho nút "Chặn lớp QC" */
+        const mEl = el.matches('video,audio,source') ? el : el.querySelector('video,audio,source');
+        const mu = mEl ? mediaUrl(mEl) : '';
+        const qcOk = /^https?:/i.test(mu);
         const info = {
             tag: el.tagName.toLowerCase(), id: el.id || '', cls: clsOf(el), name: el.getAttribute('name') || '',
             sel: selOf(host), href: hrefV,
             src: (srcEl && (srcEl.currentSrc || srcEl.getAttribute('src'))) || '',
-            hideSel: '', host: location.hostname, shadow: shadow ? host.tagName.toLowerCase() : ''
+            hideSel: '', host: location.hostname, shadow: shadow ? host.tagName.toLowerCase() : '',
+            qcUrl: qcOk ? mu : '', qcKey: qcOk ? normLink(mu) : ''
         };
         const ho = parseExt(hrefV), so = parseExt(info.src);
         if (link && ho) info.hideSel = `a[href*="${attrEsc(ho.hostname)}" i]`;
@@ -2438,6 +2575,13 @@
             const ix = site.lnk.indexOf(PK.info.blkHost);
             if (ix >= 0) site.lnk.splice(ix, 1);
             site.lnk.push(PK.info.blkHost);
+            siteWrite();
+            applyRules();
+            if (uiReady) render();
+        } else if (c === 'qc' && PK.info && PK.info.qcKey) {
+            const ix = site.lnk.indexOf(PK.info.qcKey);
+            if (ix >= 0) site.lnk.splice(ix, 1);
+            site.lnk.push(PK.info.qcKey);
             siteWrite();
             applyRules();
             if (uiReady) render();
@@ -3176,6 +3320,10 @@ to{opacity:1;transform:scale(1)}}
 .g-info small{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--t42);margin-bottom:2px}
 .g-info code{display:block;font:500 13px/1.4 var(--ff);color:var(--fg);word-break:break-all}
 .g-cp{flex:none;gap:5px;padding:6px 10px;border-radius:var(--r);font-size:13px;font-weight:600}
+.g-info > .g-col{flex:none;display:flex;flex-direction:column;align-items:center;gap:8px}
+.g-qc{flex:none;display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:9px;background:#fff;color:#111;font-size:13px;font-weight:600;white-space:nowrap;transition:transform .18s var(--ez),background var(--t2),color var(--t2)}
+.g-qc:active{transform:scale(.94)}
+.g-qc.ok{background:var(--ac);color:var(--ink)}
 .g-acts{display:flex;gap:8px;margin-top:12px}
 .g-acts + .g-acts{margin-top:8px}
 .g-act{flex:1;min-width:0;gap:7px;padding:11px 8px;border-radius:12px;font-size:14px;font-weight:600}
@@ -3509,9 +3657,12 @@ to{opacity:1;transform:scale(1)}}
 
                 const rows = [['ID', info.id], ['Class', info.cls], ['Name', info.name],
                     ['Selector', info.sel], ['Href', info.href], ['Src', info.src],
+                    ['Media', (info.qcUrl && info.qcUrl !== info.src) ? info.qcUrl : ''],
                     ['Shadow DOM', info.shadow ? 'Ẩn qua phần tử chủ <' + info.shadow + '>' : ''],
                     ['Khung nhúng', info.host && info.host !== HOST ? info.host : ''],
                     ['Chặn theo tên miền', info.hideSel]];
+                /* nút "Chặn lớp QC" nằm ngay dưới nút Sao chép của dòng nguồn media */
+                const qcRow = info.qcKey ? (info.qcUrl === info.src ? 'Src' : 'Media') : '';
                 const box = $('g-info');
                 box.innerHTML = '';
                 const idleCp = ic('copy', 14) + '<span>Sao chép</span>';
@@ -3529,7 +3680,16 @@ to{opacity:1;transform:scale(1)}}
                     b.className = 'g-cp';
                     b.innerHTML = idleCp;
                     bind(b, 'click', async () => flash(b, await copyText(val), idleCp));
-                    row.append(left, b);
+                    if (qcRow && label === qcRow) {
+                        const col = document.createElement('div');
+                        col.className = 'g-col';
+                        const qb = document.createElement('button');
+                        qb.className = 'g-qc';
+                        qb.textContent = 'Chặn lớp QC';
+                        bind(qb, 'click', () => qcAct(qb));
+                        col.append(b, qb);
+                        row.append(left, col);
+                    } else row.append(left, b);
                     box.appendChild(row);
                 });
                 if (!box.children.length) box.innerHTML = '<div class="g-empty" style="padding:14px">Phần tử không có id / class / name</div>';
@@ -3560,7 +3720,7 @@ to{opacity:1;transform:scale(1)}}
                     p.host !== HOST && `frame: ${p.host}`].filter(Boolean).join('\n');
                 flash(tg.closest('button') || $('g-copyall'), await copyText(txt), idleAll);
             });
-            const applyCmd = c => () => {
+            const runCmd = c => {
                 if (!pickedInfo) return;
                 if (pickedRid) {
                     sendCmd(pickedRid, c);
@@ -3568,7 +3728,18 @@ to{opacity:1;transform:scale(1)}}
                     setTimeout(() => loadFrameHost(h), 800);
                 } else handlePickCmd(c);
                 render();
+            };
+            const applyCmd = c => () => {
+                if (!pickedInfo) return;
+                runCmd(c);
                 closeInfo();
+            };
+            const qcAct = qb => {
+                if (!pickedInfo || !pickedInfo.qcKey) return;
+                runCmd('qc');
+                qb.classList.add('ok');
+                qb.textContent = 'Đã chặn lớp QC';
+                setTimeout(() => { if (ctl2.isOpen()) closeInfo(); }, 450);
             };
             bind($('g-hideit'), 'click', applyCmd('hide'));
             bind($('g-blk'), 'click', applyCmd('blk'));

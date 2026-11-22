@@ -2,7 +2,6 @@
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
 // @version      2.8
-// @description  Chặn quảng cáo với một chạm.
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -25,7 +24,6 @@
     const CONFIG = {
         allow: ['microsoft.com', 'windows.com', 'windowsupdate.com', 'wikipedia.org','facebook.com','messenger.com','instagram.com','youtube.com'],
         names: ['smartbanner', 'app-banner', 'cookie-popup', '*adsbygoogle*'],
-        texts: ['Tải ứng dụng', 'Quảng cáo'],
         hosts: [],
         links: ['tinyurl', 'bit.ly', 'cutt.ly', 'shorturl', 'bet', 'win', '88', '789', 'nhacai', 'casino', 'jackpot'],
         appAllow: [],
@@ -33,7 +31,7 @@
         antiAdblock: true,
         playerAds: true,
         onboarding: true,
-        welcomeReplay: true
+        welcomeReplay: false
     };
 
     let uiBusy = false;

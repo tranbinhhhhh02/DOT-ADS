@@ -4299,7 +4299,6 @@ to{opacity:1;transform:scale(1)}}
                     pingDot();
                 }, 700);
             }
-
             bind(btn, 'click', () => {
                 if (busy || closing || !btn.classList.contains('on')) return;
                 if (cur >= PAGES.length - 1) finish(); else go(cur + 1);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dot Ads
 // @namespace    http://tampermonkey.net/
-// @version      2.8
+// @version      2.7
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
